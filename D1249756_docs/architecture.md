@@ -8,10 +8,10 @@
 | 欄位 | 內容 |
 |------|------|
 | **文件標題** | AI 課堂講義學習與複習規劃 Agent — 後端 / 系統整合 ADD |
-| **版本號** | v1.0 |
+| **版本號** | v1.1 |
 | **負責人** | 黃柏豪（後端 / 系統整合） |
 | **建立日期** | 2026-05-20 |
-| **更新日期** | 2026-05-20 |
+| **更新日期** | 2026-05-20（Q1–Q6 決策確認，升版 v1.1） |
 | **審核人員** | 組長、林瑞城（前端）、沈靖恩（Agent）、楊沁霖（RAG） |
 | **關聯文件** | [docs/prd.md](./prd.md) |
 
@@ -30,7 +30,7 @@
 - **表現層（API Layer）**：FastAPI 路由，處理 HTTP 請求與 SSE 推送
 - **應用層（Application Layer）**：Intent 判斷、任務流程控制器（Orchestrator）
 - **領域層（Domain Layer）**：各 Tool Function 業務邏輯（摘要、出題、批改…）
-- **基礎設施層（Infrastructure Layer）**：SQLite、ChromaDB / FAISS、LLM API 呼叫
+- **基礎設施層（Infrastructure Layer）**：SQLite、ChromaDB（持久化向量索引）、LLM API 呼叫（Gemini 開發 / GPT-4o Demo）
 
 ### 2.3 高階架構圖
 
@@ -52,13 +52,13 @@ graph TD
 
     subgraph Storage["資料儲存"]
         SQLite[("SQLite\n學習狀態 / Log")]
-        VectorDB[("ChromaDB / FAISS\n講義向量索引")]
+        VectorDB[("ChromaDB\n講義向量索引（持久化）")]
         FileStore["File Store\n上傳講義暫存"]
     end
 
     subgraph External["外部服務"]
-        LLM["Gemini / OpenAI API"]
-        Embed["Embedding Model"]
+        LLM["Gemini API（開發）\nGPT-4o（Demo）"]
+        Embed["text-embedding-004"]
     end
 
     UI -->|HTTP POST| API
@@ -84,13 +84,14 @@ graph TD
 |------|---------|---------|
 | **後端框架** | FastAPI（Python 3.11+） | 原生支援 async/await、自動生成 OpenAPI 文件、SSE 支援佳、團隊熟悉 Python |
 | **關聯式資料庫** | SQLite | 無需額外部署、適合單機 Demo 環境、Python 內建 sqlite3 支援 |
-| **向量資料庫** | ChromaDB（預設）/ FAISS（備選） | ChromaDB 支援本地持久化且 API 友善；FAISS 效能更高但較底層 |
-| **LLM** | Gemini API（主）/ OpenAI API（備） | Gemini 支援中文表現佳、已有 API Key；OpenAI 為業界標準備援 |
-| **Embedding** | text-embedding-004（Google）或 text-embedding-3-small（OpenAI） | 支援中文語意、向量維度適中（768/1536） |
+| **向量資料庫** | ChromaDB（跨 Session 持久化） | ✅ Q2 確認：採用 ChromaDB 本地持久化目錄，無需每次重建索引 |
+| **LLM** | Gemini 2.0 Flash（開發） / GPT-4o（Demo） | ✅ Q1 確認：開發期用 Gemini 降低成本；Demo 展示切換 GPT-4o 提升效果 |
+| **Embedding** | text-embedding-004（Google） | 與 Gemini 同生態系、支援中文、768 維向量 |
 | **文件解析** | pdfplumber（PDF）/ python-pptx（PPT） | 中文 PDF 提取穩定；python-pptx 為 PPT 標準解析庫 |
-| **即時通訊** | Server-Sent Events（SSE） | 單向推播足夠、比 WebSocket 輕量、FastAPI 原生支援 |
-| **ORM / DB 工具** | SQLAlchemy（Core 模式）或 aiosqlite | 支援 async 操作、不過度抽象 |
-| **部署** | 本機 uvicorn（開發 / Demo） | 輕量、啟動快、適合期末 Demo 場景 |
+| **即時通訊** | Server-Sent Events（SSE） | 單向推播足夠、比 WebSocket 輕量、FastAPI 原生支援；同機部署無跨域問題 |
+| **ORM / DB 工具** | aiosqlite + SQLAlchemy Core | 支援 async 操作、不過度抽象 |
+| **部署** | 本機 uvicorn（前後端同 Server，port 8000） | ✅ Q3 確認：前後端同機，靜態檔案由 FastAPI `StaticFiles` 掛載 |
+| **任務執行** | FastAPI BackgroundTasks | ✅ Q6 確認：Demo 規模不需 Celery，BackgroundTask 足夠 |
 
 ---
 
@@ -171,8 +172,10 @@ graph LR
 | **PlanGenerator** | 根據弱點與考試日期生成複習計畫 | `plan(weak_topics, exam_date) -> plan` | LLMClient |
 | **LogRepository** | 持久化 TaskLog 至 SQLite，提供 SSE 推播 | `save(log)`, `stream(task_id)` | SQLite, SSE |
 | **StateRepository** | 學習狀態 CRUD | `get(student_id)`, `upsert(state)` | SQLite |
-| **VectorRepository** | 管理向量索引（建立、查詢） | `index(chunks[])`, `search(query)` | ChromaDB / FAISS |
-| **LLMClient** | 封裝 LLM API 呼叫，統一介面、處理重試 | `complete(prompt) -> text` | Gemini / OpenAI API |
+| **VectorRepository** | 管理 ChromaDB 向量索引（建立、持久化查詢） | `index(chunks[])`, `search(query)` | ChromaDB |
+| **LLMClient** | 封裝 LLM API 呼叫，統一介面、處理重試；透過 `provider` 參數切換 Gemini / GPT-4o | `complete(prompt, provider) -> text` | Gemini API、OpenAI API |
+| **DeveloperLogRepo** | 記錄完整工具呼叫技術細節（供開發者除錯） | `save_dev_log(task_log)` | SQLite |
+| **WorkflowLogRepo** | 記錄使用者可讀的任務步驟摘要（供前端展示） | `save_workflow_log(steps[])`, `stream(task_id)` | SQLite, SSE |
 
 ---
 
@@ -249,10 +252,11 @@ erDiagram
 | 資料類型 | 儲存位置 | 保留期限 | 說明 |
 |---------|---------|---------|------|
 | 學生學習狀態 | SQLite `students` | 永久 | 跨 Session 保留弱點記憶 |
-| 任務 Log | SQLite `task_logs` | 30 天 | 完整工具呼叫鏈紀錄 |
+| Developer Log（技術詳情） | SQLite `dev_logs` | 30 天 | ✅ Q5：完整工具呼叫鏈、duration_ms、LLM prompt，供開發除錯 |
+| Workflow Log（使用者摘要） | SQLite `workflow_logs` | 永久 | ✅ Q5：可讀步驟摘要，供前端 Agent Terminal 顯示 |
 | 測驗作答紀錄 | SQLite `quiz_records` | 永久 | 用於弱點分析 |
-| 講義向量索引 | ChromaDB | Per Session | 每次上傳重建，可選持久化 |
-| 上傳原始檔案 | 本機 FileStore（`/tmp/uploads`） | Session 結束後清除 | 不長期儲存原始講義 |
+| 講義向量索引 | ChromaDB（`./chroma_db/`） | 持久化 | ✅ Q2：跨 Session 保留，同一份講義無需重複建索引 |
+| 上傳原始檔案 | 本機 `./uploads/` | Session 結束後清除 | 不長期儲存原始講義 |
 
 ### 5.3 資料流向
 
@@ -358,12 +362,12 @@ sequenceDiagram
 
 | 面向 | 設計決策 |
 |------|---------|
-| **身份驗證** | v1.0 使用 `student_id`（UUID）作為識別，由前端首次訪問時生成並持久化至 LocalStorage；不實作完整 OAuth |
-| **CORS** | FastAPI 設定 `CORSMiddleware`，明確允許前端 origin，禁止 wildcard（`*`） |
+| **身份驗證** | ✅ Q4 確認：`student_id` 由**前端**首次訪問時以 `crypto.randomUUID()` 生成，持久化至 `localStorage`；後端直接接受，不額外派發 |
+| **CORS** | ✅ Q3 確認：前後端同機部署（FastAPI 同時服務靜態前端），**無需設定 CORS**；若未來分離部署再加入 `CORSMiddleware` |
 | **檔案上傳防護** | 限制 MIME Type（僅允許 `application/pdf`, `application/vnd.openxmlformats-officedocument.presentationml.presentation`）；檔案大小 ≤ 50MB |
 | **Input Validation** | 所有請求參數透過 Pydantic Model 驗證，自動過濾非法輸入 |
 | **Rate Limiting** | 對 `/api/task` 設定 IP 速率限制（每分鐘 ≤ 10 次），防止 LLM API 濫用 |
-| **敏感資料** | LLM API Key 存於環境變數（`.env`），不寫入程式碼或版本控制 |
+| **敏感資料** | Gemini API Key 與 OpenAI API Key 存於 `.env`，透過 `python-dotenv` 載入，不寫入版本控制 |
 
 ---
 
@@ -373,32 +377,36 @@ sequenceDiagram
 
 | 環境 | 說明 |
 |------|------|
-| **Development** | 本機 `uvicorn --reload`，SQLite 本地檔，ChromaDB 本地持久化 |
-| **Demo（期末）** | 同 Development 環境，確保 Demo 流程穩定可重現 |
+| **Development** | 本機 `uvicorn --reload`，LLM 使用 Gemini 2.0 Flash，ChromaDB 本地持久化 |
+| **Demo（期末）** | 同機部署，LLM 切換 GPT-4o，前端靜態檔由 FastAPI `StaticFiles` 掛載於 `/` |
 | **Production（Out of Scope）** | Docker 容器化部署，超出本版本範圍 |
 
 ### 8.2 本機部署架構圖
 
+> ✅ Q3 確認：前後端同機，無跨域問題，前端靜態資源由 FastAPI 直接服務。
+
 ```mermaid
 graph TD
-    subgraph LocalMachine["本機（開發 / Demo 環境）"]
-        Browser["瀏覽器\n前端 HTML / JS"]
+    subgraph LocalMachine["本機（開發 / Demo 環境，port 8000）"]
+        Browser["瀏覽器\n前端 HTML / JS\n（FastAPI StaticFiles）"]
         Uvicorn["uvicorn\nFastAPI App\n:8000"]
         SQLiteFile["learning.db\nSQLite 檔案"]
-        ChromaDir["./chroma_db/\nChromaDB 本地目錄"]
+        ChromaDir["./chroma_db/\nChromaDB 持久化目錄"]
         UploadDir["./uploads/\n暫存講義"]
     end
 
     subgraph Cloud["外部雲端服務"]
-        GeminiAPI["Gemini API"]
-        EmbedAPI["Embedding API"]
+        GeminiAPI["Gemini 2.0 Flash\n（開發）"]
+        GPT4oAPI["GPT-4o\n（Demo）"]
+        EmbedAPI["text-embedding-004"]
     end
 
-    Browser -->|HTTP / SSE| Uvicorn
+    Browser -->|同源 HTTP / SSE| Uvicorn
     Uvicorn --> SQLiteFile
     Uvicorn --> ChromaDir
     Uvicorn --> UploadDir
     Uvicorn -->|HTTPS| GeminiAPI
+    Uvicorn -->|HTTPS| GPT4oAPI
     Uvicorn -->|HTTPS| EmbedAPI
 ```
 
@@ -474,35 +482,49 @@ backend/
 
 ---
 
-### ADR-003：向量資料庫預設 ChromaDB，保留 FAISS 切換彈性
+### ADR-003：向量資料庫確認採用 ChromaDB 跨 Session 持久化
 
-- **背景**：RAG 模組需要向量檢索，需選擇本地可部署的向量資料庫。
-- **決策**：預設使用 ChromaDB，透過 `VectorRepository` 抽象介面保留切換至 FAISS 的彈性。
-- **理由**：ChromaDB 提供直覺的 Python API，支援本地持久化，適合 Demo；FAISS 效能更高但需手動管理索引。
-- **後果**：`VectorRepository` 介面需維持穩定，避免上層業務邏輯直接依賴 ChromaDB 細節。
+- **背景**：RAG 模組需要向量檢索，且每次重建索引耗時（含 Embedding 呼叫費用）。
+- **決策**：✅ Q2 確認採用 ChromaDB，啟用本地持久化目錄（`./chroma_db/`），同一份講義上傳後無需重建。
+- **理由**：ChromaDB 持久化模式設定簡單（`PersistentClient`）；避免每次 Demo 重複 Embedding 呼叫；FAISS 不具備原生持久化 API，需自行序列化。
+- **後果**：`./chroma_db/` 目錄須納入 `.gitignore`，不隨程式碼提交。
 
 ---
 
 ### ADR-004：任務非同步執行採用 FastAPI BackgroundTask
 
 - **背景**：LLM 任務執行時間可能長達 30 秒，不可阻塞 HTTP 回應。
-- **決策**：使用 `FastAPI.BackgroundTasks` 執行任務，立即回傳 `task_id`，前端透過 SSE 追蹤進度。
+- **決策**：✅ Q6 確認使用 `FastAPI.BackgroundTasks` 執行任務，立即回傳 `task_id`，前端透過 SSE 追蹤進度。
 - **理由**：Demo 規模不需引入 Celery + Redis 等重型任務隊列；BackgroundTask 足以支撐單用戶並發需求。
 - **後果**：進程重啟會中斷進行中的背景任務；正式環境應遷移至 Celery。
 
 ---
 
-## 11. 開放問題（Open Questions）
+### ADR-005：Log 系統採用雙層設計（Developer Log + User Workflow Log）
 
-| # | 問題 | 影響範圍 | 負責確認 |
-|---|------|---------|---------|
-| Q1 | LLM 確認使用 Gemini 或 OpenAI？影響 LLMClient 實作 | LLMClient、Embedding 選型 | 組長 |
-| Q2 | ChromaDB 向量索引是否需要跨 Session 持久化？或每次上傳重建？ | VectorRepository 設計 | 楊沁霖 |
-| Q3 | 前後端是否同 Origin？影響 CORS 設定與 SSE 連線穩定性 | API Layer、CORS 設定 | 林瑞城 / 黃柏豪 |
-| Q4 | `student_id` 由前端 UUID 生成或後端 `POST /api/student` 派發？ | Student 資料建立流程 | 黃柏豪 |
-| Q5 | Intent 判斷採用關鍵字規則或 LLM 分類？影響準確率與延遲 | IntentAgent 實作 | 沈靖恩 |
+- **背景**：Q5 確認 Log 需同時服務兩種受眾：開發者（除錯用）與學生（理解 Agent 流程用）。
+- **決策**：分離為兩張資料表與兩個 Repository：
+  - `dev_logs`：記錄完整技術細節（LLM prompt、duration_ms、向量查詢分數）
+  - `workflow_logs`：記錄使用者可讀步驟摘要（`[Step 1] 讀取講義完成`），透過 SSE 即時推送至前端
+- **理由**：混合儲存會導致前端過濾邏輯複雜；分層後各層關注點清晰，前端直接消費 `workflow_logs` 不需二次處理。
+- **後果**：每次任務需寫入兩份 Log，略增 I/O；但 SQLite 寫入速度足以應付此場景。
 
 ---
 
-*文件版本：v1.0 ｜ 最後更新：2026-05-20 ｜ 負責人：黃柏豪（後端 / 系統整合）*
+## 11. 決策確認紀錄（Resolved Decisions）
+
+> 所有原 Open Questions 已於 2026-05-20 確認，無待決事項。
+
+| # | 問題 | 確認決策 | 狀態 |
+|---|------|---------|------|
+| Q1 | LLM 選型 | **Gemini 2.0 Flash（開發）＋ GPT-4o（Demo）**；`LLMClient` 以 `provider` 參數切換 | ✅ 已確認 |
+| Q2 | 向量索引持久化策略 | **ChromaDB 跨 Session 持久化**；`PersistentClient` 模式 | ✅ 已確認 |
+| Q3 | 前後端部署關係 | **同一台 Server**；FastAPI `StaticFiles` 掛載前端，無需 CORS | ✅ 已確認 |
+| Q4 | `student_id` 產生方式 | **前端以 `crypto.randomUUID()` 生成**，存入 `localStorage` | ✅ 已確認 |
+| Q5 | Log 呈現策略 | **雙層 Log**：`dev_logs`（技術詳情）＋ `workflow_logs`（使用者摘要 / SSE） | ✅ 已確認 |
+| Q6 | 非同步任務機制 | **FastAPI `BackgroundTasks`**；Demo 規模無需 Celery | ✅ 已確認 |
+
+---
+
+*文件版本：v1.1 ｜ 最後更新：2026-05-20（Q1–Q6 決策確認）｜ 負責人：黃柏豪（後端 / 系統整合）*
 *關聯 PRD：[docs/prd.md](./prd.md)*

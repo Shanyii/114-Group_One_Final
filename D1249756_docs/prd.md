@@ -8,9 +8,10 @@
 | 欄位 | 內容 |
 |------|------|
 | **文件標題** | AI 課堂講義學習與複習規劃 Agent — 後端 / 系統整合 PRD |
-| **版本號** | v1.0 |
+| **版本號** | v1.1 |
 | **負責人** | 黃柏豪（後端 / 系統整合） |
 | **建立日期** | 2026-05-20 |
+| **更新日期** | 2026-05-20（Q1–Q6 決策確認，升版 v1.1） |
 | **參考來源** | 生成式 AI 應用_第一組_期中報告.pdf、ChatGPT 設計討論紀錄 |
 | **審核人員** | 組長、前端負責人（林瑞城）、Agent 核心邏輯負責人（沈靖恩）、RAG 負責人（楊沁霖） |
 
@@ -301,19 +302,23 @@ Step 8: save_log()           → 持久化本次任務完整 Log
 
 ### 6.1 技術架構
 
-| 元件 | 技術選型 |
-|------|---------|
-| Web 框架 | FastAPI（Python） |
-| 資料庫 | SQLite（學習狀態、Log 持久化） |
-| 向量資料庫 | ChromaDB 或 FAISS（RAG 語意檢索） |
-| LLM | Gemini API / OpenAI API |
-| 文件解析 | pdfplumber（PDF）、python-pptx（PPT） |
-| 即時通訊 | Server-Sent Events（SSE）或 WebSocket |
+| 元件 | 技術選型 | 備註 |
+|------|---------|---------|
+| Web 框架 | FastAPI（Python 3.11+） | — |
+| 關聯式資料庫 | SQLite（aiosqlite） | 學習狀態、Dev Log、Workflow Log、測驗紀錄 |
+| 向量資料庫 | **ChromaDB（本地持久化）** | ✅ Q2：`PersistentClient` 模式，跨 Session 保留索引 |
+| LLM | **Gemini 2.0 Flash（開發）/ GPT-4o（Demo）** | ✅ Q1：`LLMClient` 以 `provider` 參數切換 |
+| Embedding | text-embedding-004（Google） | 與 Gemini 同生態系，768 維，支援中文 |
+| 文件解析 | pdfplumber（PDF）/ python-pptx（PPT） | — |
+| 即時通訊 | Server-Sent Events（SSE） | 推送 Workflow Log 至前端 |
+| 部署方式 | 本機 uvicorn，**前後端同 Server**（port 8000） | ✅ Q3：FastAPI `StaticFiles` 掛載前端，無 CORS 問題 |
+| 任務執行 | FastAPI BackgroundTasks | ✅ Q6：Demo 規模不需 Celery |
 
 ### 6.2 第三方服務依賴
 
-- **Gemini API / OpenAI API**：摘要生成、題目生成、批改等 LLM 任務
-- **Embedding Model**：文字向量化（支援中文）
+- **Gemini API（開發）**：摘要生成、題目生成、批改等 LLM 任務（✅ Q1 確認）
+- **GPT-4o（Demo 展示）**：期末 Demo 時切換，提升展示效果（✅ Q1 確認）
+- **text-embedding-004**：文字向量化，支援中文（✅ Q1 確認採用 Google Embedding）
 
 ### 6.3 與現有系統整合點
 
@@ -349,17 +354,17 @@ Step 8: save_log()           → 持久化本次任務完整 Log
 
 ---
 
-## 9. 開放問題（Open Questions）
+## 9. 開放問題（Open Questions）— 已全數確認
 
-| # | 問題 | 負責確認 | 狀態 |
+| # | 問題 | 確認決策 | 狀態 |
 |---|------|---------|------|
-| Q1 | LLM 使用 Gemini 或 OpenAI？需確認 API Key 授權 | 組長 | ⬜ 待確認 |
-| Q2 | 向量資料庫選 ChromaDB 還是 FAISS？兩者的本地部署差異需評估 | 楊沁霖 | ⬜ 待確認 |
-| Q3 | 前端與後端是否在同一個 Server 上？影響 CORS 設定與 SSE 穩定性 | 林瑞城 / 黃柏豪 | ⬜ 待確認 |
-| Q4 | `student_id` 如何產生？是否由前端生成（UUID）或後端派發？ | 黃柏豪 | ⬜ 待確認 |
-| Q5 | Log 資料是否需要對外展示？或只供開發者內部查閱？ | 組長 | ⬜ 待確認 |
-| Q6 | 非同步任務是否需要任務隊列（如 Celery）？還是 FastAPI BackgroundTask 足夠？ | 黃柏豪 | ⬜ 待確認 |
+| Q1 | LLM 使用 Gemini 或 OpenAI？需確認 API Key 授權 | **Gemini 2.0 Flash（開發）＋ GPT-4o（Demo）**；`LLMClient` 以 `provider` 切換 | ✅ 已確認 |
+| Q2 | 向量資料庫選 ChromaDB 還是 FAISS？ | **ChromaDB 持久化模式**（`PersistentClient`），跨 Session 保留索引，無需每次重建 | ✅ 已確認 |
+| Q3 | 前端與後端是否在同一個 Server 上？ | **同一台 Server**，FastAPI `StaticFiles` 掛載前端，無 CORS 問題 | ✅ 已確認 |
+| Q4 | `student_id` 如何產生？ | **前端 `crypto.randomUUID()`** 生成，存入 `localStorage`，後端直接接受 | ✅ 已確認 |
+| Q5 | Log 資料是否需要對外展示？ | **雙層 Log**：`dev_logs`（技術細節供開發者）＋ `workflow_logs`（步驟摘要供使用者 / SSE 推播） | ✅ 已確認 |
+| Q6 | 非同步任務是否需要任務隊列（如 Celery）？ | **FastAPI `BackgroundTasks`** 足夠；Demo 規模不需引入 Celery | ✅ 已確認 |
 
 ---
 
-*文件版本：v1.0 ｜ 最後更新：2026-05-20 ｜ 負責人：黃柏豪（後端 / 系統整合）*
+*文件版本：v1.1 ｜ 最後更新：2026-05-20（Q1–Q6 決策確認）｜ 負責人：黃柏豪（後端 / 系統整合）*
