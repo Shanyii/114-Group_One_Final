@@ -80,6 +80,7 @@ class Summarizer:
                 temperature=0.3,
                 max_tokens=1024,
                 provider=provider,
+                is_json=True,
             )
             result = self._parse_json_response(raw)
             result["topic"] = topic
@@ -91,7 +92,7 @@ class Summarizer:
 
     def _parse_json_response(self, raw: str) -> dict:
         """解析 LLM 返回的 JSON，容忍格式不完整的情況。"""
-        # 嘗試從 ```json ... ``` 中提取
+        # 原生 JSON 模式應該已經回傳乾淨的 JSON，但預防萬一還是保留 markdown 去除
         match = re.search(r"```json\s*(.*?)\s*```", raw, re.DOTALL)
         if match:
             raw = match.group(1)
@@ -99,6 +100,5 @@ class Summarizer:
         try:
             return json.loads(raw)
         except json.JSONDecodeError:
-            # 容錯：直接解析文字
             logger.warning("[Summarizer] JSON 解析失敗，使用原始文字")
             return {"summary": raw.strip(), "key_points": []}

@@ -172,9 +172,21 @@ class Orchestrator:
 
             # ── Step 8：儲存 Dev Log ──────────────────────────────────────────
             total_ms = int((time.time() - start_time) * 1000)
+            
+            # 收集完整的生成結果
+            import json
+            full_result = {
+                "summary": context.get("generate_summary"),
+                "quiz": context.get("generate_quiz"),
+                "plan": context.get("generate_study_plan")
+            }
+            full_result_str = json.dumps(full_result, ensure_ascii=False)
+
             result_summary = context.get("generate_summary") or context.get("generate_quiz") or "任務完成"
             if isinstance(result_summary, (list, dict)):
                 result_summary = str(result_summary)[:300]
+            elif isinstance(result_summary, str):
+                result_summary = result_summary[:300]
 
             await self.log_repo.save_dev_log(
                 task_id=task_id,
@@ -182,7 +194,7 @@ class Orchestrator:
                 intent=intent,
                 tools_called=tools_called,
                 retrieved_topic=context.get("topic"),
-                final_result=result_summary,
+                final_result=full_result_str,
                 total_duration_ms=total_ms,
             )
 

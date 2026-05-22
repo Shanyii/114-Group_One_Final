@@ -27,7 +27,7 @@ from core.config import get_settings
 logger = logging.getLogger(__name__)
 
 # ── 供應商型別別名 ────────────────────────────────────────────────────────────
-LLMProvider = Literal["gemini", "openai"]
+LLMProvider = Literal["gemini", "openai", "mock"]
 
 
 class LLMClient:
@@ -51,8 +51,9 @@ class LLMClient:
         self.settings = get_settings()
         self._openai_client: AsyncOpenAI | None = None
 
-        # 初始化 Gemini API Key
-        genai.configure(api_key=self.settings.gemini_api_key)
+        # 初始化 Gemini API Key (如果有填)
+        if self.settings.gemini_api_key and self.settings.gemini_api_key != "your_gemini_api_key_here":
+            genai.configure(api_key=self.settings.gemini_api_key)
 
     # ── 主要公開介面 ──────────────────────────────────────────────────────────
 
@@ -63,6 +64,7 @@ class LLMClient:
         system_prompt: str = "你是一個專業的學習輔助 AI 助手，請用繁體中文回應。",
         temperature: float = 0.7,
         max_tokens: int = 2048,
+        is_json: bool = False,
     ) -> str:
         """
         呼叫 LLM 完成文字生成任務，內建指數退避重試。
@@ -86,9 +88,11 @@ class LLMClient:
 
         try:
             if resolved_provider == "gemini":
-                return await self._complete_gemini(prompt, system_prompt, temperature, max_tokens)
+                return await self._complete_gemini(prompt, system_prompt, temperature, max_tokens, is_json)
             elif resolved_provider == "openai":
-                return await self._complete_openai(prompt, system_prompt, temperature, max_tokens)
+                return await self._complete_openai(prompt, system_prompt, temperature, max_tokens, is_json)
+            elif resolved_provider == "mock":
+                return self._complete_mock(prompt)
             else:
                 raise ValueError(f"不支援的 LLM 供應商：{resolved_provider}")
         except Exception as exc:
@@ -109,10 +113,12 @@ class LLMClient:
             RuntimeError: Embedding API 呼叫失敗時拋出
         """
         try:
+            if self.settings.llm_provider == "mock":
+                return [0.1] * 768
+                
             result = genai.embed_content(
                 model=self.settings.embedding_model,
                 content=text,
-                task_type="retrieval_document",
             )
             return result["embedding"]
         except Exception as exc:
@@ -130,10 +136,12 @@ class LLMClient:
             list[float]: 768 維查詢向量
         """
         try:
+            if self.settings.llm_provider == "mock":
+                return [0.1] * 768
+
             result = genai.embed_content(
                 model=self.settings.embedding_model,
                 content=query,
-                task_type="retrieval_query",
             )
             return result["embedding"]
         except Exception as exc:
@@ -149,19 +157,23 @@ class LLMClient:
         reraise=True,
     )
     async def _complete_gemini(
-        self, prompt: str, system_prompt: str, temperature: float, max_tokens: int
+        self, prompt: str, system_prompt: str, temperature: float, max_tokens: int, is_json: bool = False
     ) -> str:
         """呼叫 Gemini API 完成文字生成（含重試）。"""
         model = genai.GenerativeModel(
             model_name=self.settings.gemini_model,
             system_instruction=system_prompt,
         )
+        config_kwargs = {
+            "temperature": temperature,
+            "max_output_tokens": max_tokens,
+        }
+        if is_json:
+            config_kwargs["response_mime_type"] = "application/json"
+
         response = await model.generate_content_async(
             prompt,
-            generation_config=genai.GenerationConfig(
-                temperature=temperature,
-                max_output_tokens=max_tokens,
-            ),
+            generation_config=genai.GenerationConfig(**config_kwargs),
         )
         return response.text
 
@@ -174,11 +186,15 @@ class LLMClient:
         reraise=True,
     )
     async def _complete_openai(
-        self, prompt: str, system_prompt: str, temperature: float, max_tokens: int
+        self, prompt: str, system_prompt: str, temperature: float, max_tokens: int, is_json: bool = False
     ) -> str:
         """呼叫 OpenAI API 完成文字生成（含重試）。"""
         if self._openai_client is None:
             self._openai_client = AsyncOpenAI(api_key=self.settings.openai_api_key)
+
+        kwargs = {}
+        if is_json:
+            kwargs["response_format"] = {"type": "json_object"}
 
         response = await self._openai_client.chat.completions.create(
             model=self.settings.openai_model,
@@ -188,8 +204,30 @@ class LLMClient:
             ],
             temperature=temperature,
             max_tokens=max_tokens,
+            **kwargs
         )
         return response.choices[0].message.content or ""
+
+    def _complete_mock(self, prompt: str) -> str:
+        """回傳測試用的假資料，不用呼叫真實 API"""
+        if "題" in prompt or "question" in prompt.lower():
+            return """```json
+[
+  {
+    "topic": "Mock 測試主題",
+    "question": "這是一題來自 Mock 模式的假題目，請問正確答案是什麼？",
+    "options": ["A", "B", "C", "D"],
+    "answer": "A",
+    "explanation": "因為現在在 Mock 展示模式下，所以自動選 A。"
+  }
+]
+```"""
+        elif "計畫" in prompt or "plan" in prompt.lower():
+            return "1. 第一天：複習測試資料\\n2. 第二天：繼續複習測試資料"
+        elif "評分" in prompt or "grade" in prompt.lower():
+            return "答對了，太棒了！"
+        else:
+            return "這是一段重點摘要：這份文件提到了很多重要知識點（Mock 模式展示用）。"
 
 
 # ── 全域單例（避免重複初始化）────────────────────────────────────────────────

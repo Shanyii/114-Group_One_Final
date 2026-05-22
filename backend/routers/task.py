@@ -16,6 +16,8 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from core.config import get_settings
 from models.schemas import APIResponse, TaskCreateResponse, TaskRequest, TaskStatusResponse
 from services.orchestrator import Orchestrator
+from repositories.log_repo import LogRepository
+import json
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -146,4 +148,44 @@ async def get_task_status(task_id: str):
             created_at=datetime.fromisoformat(task["created_at"]),
             completed_at=datetime.fromisoformat(task["completed_at"]) if task.get("completed_at") else None,
         ).model_dump(),
+    )
+
+
+@router.get(
+    "/task/{task_id}/result",
+    response_model=APIResponse,
+    summary="取得任務完整結果",
+    description="回傳 Agent 生成的完整重點摘要、題目與正確答案等 JSON 格式資料。",
+)
+async def get_task_result(task_id: str):
+    """
+    獲取任務最終生成的完整結構化資料。
+    """
+    # 驗證 UUID 格式
+    try:
+        uuid.UUID(task_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="task_id 必須為合法的 UUID 格式",
+        )
+
+    log_repo = LogRepository()
+    dev_log = await log_repo.get_dev_log(task_id)
+    
+    if not dev_log:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="找不到該任務的結果，任務可能還沒完成或發生錯誤。",
+        )
+    
+    # 解析 final_result JSON 字串
+    try:
+        final_result = json.loads(dev_log["final_result"])
+    except Exception:
+        final_result = {"raw_result": dev_log["final_result"]}
+
+    return APIResponse(
+        status="success",
+        data=final_result,
     )

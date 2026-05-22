@@ -101,6 +101,7 @@ class QuizGenerator:
                 temperature=0.5,
                 max_tokens=2048,
                 provider=provider,
+                is_json=True,
             )
             questions = self._parse_questions(raw)
             # 補齊 topic 欄位
@@ -115,7 +116,7 @@ class QuizGenerator:
 
     def _parse_questions(self, raw: str) -> list[dict]:
         """解析 LLM 返回的 JSON 題目陣列，容忍格式異常。"""
-        # 嘗試提取 ```json ... ``` 或 [ ... ]
+        # 原生 JSON 模式應該已經回傳乾淨的 JSON，預防萬一保留去除 markdown 的邏輯
         match = re.search(r"```json\s*(.*?)\s*```", raw, re.DOTALL)
         if match:
             raw = match.group(1)
