@@ -1,0 +1,12 @@
+{
+  "user_id": "student_01",
+  "weak_topics": {
+    "TF-IDF觀念": 1
+  },
+  "completed_quizzes": 4,
+  "correct_answers": 3,
+  "completed_lectures": [
+    "nlp_chapter3.pdf",
+    "nlp_chapter4.pdf"
+  ]
+}
