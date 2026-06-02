@@ -7,6 +7,7 @@
 @author 楊沁霖（RAG / 資料處理）/ 黃柏豪（整合）
 @version 1.1.0
 """
+from __future__ import annotations
 
 import logging
 import uuid
@@ -62,7 +63,7 @@ class VectorRepository:
         self,
         document_id: str,
         student_id: str,
-        chunks: list[str],
+        chunks: list[str | dict],
     ) -> int:
         """
         將文件的 Chunk 列表建立向量索引。
@@ -72,7 +73,7 @@ class VectorRepository:
         Args:
             document_id: 文件 UUID
             student_id: 學生 UUID
-            chunks: 文字 Chunk 列表
+            chunks: 文字 Chunk 列表（可為字串列表或含有 text 與 page_num 的字典列表）
 
         Returns:
             int: 成功建立索引的 Chunk 數量
@@ -90,16 +91,32 @@ class VectorRepository:
 
         for i, chunk in enumerate(chunks):
             try:
-                embedding = await self._llm_client.embed(chunk)
+                # 兼容處理：支援字串列表或字典列表
+                if isinstance(chunk, dict):
+                    chunk_text = chunk.get("text", "")
+                    page_num = chunk.get("page_num")
+                else:
+                    chunk_text = chunk
+                    page_num = None
+
+                if not chunk_text or not chunk_text.strip():
+                    continue
+
+                embedding = await self._llm_client.embed(chunk_text)
                 chunk_id = f"{document_id}_{i}"
                 ids.append(chunk_id)
                 embeddings.append(embedding)
-                documents.append(chunk)
-                metadatas.append({
+                documents.append(chunk_text)
+                
+                metadata = {
                     "document_id": document_id,
                     "student_id": student_id,
                     "chunk_index": i,
-                })
+                }
+                if page_num is not None:
+                    metadata["page_num"] = page_num
+                
+                metadatas.append(metadata)
             except Exception as exc:
                 logger.error("[VectorRepo] Chunk %d Embedding 失敗：%s", i, exc)
                 continue
@@ -190,6 +207,7 @@ class VectorRepository:
                 "score": round(score, 4),
                 "chunk_index": meta.get("chunk_index", -1),
                 "document_id": meta.get("document_id", ""),
+                "page_num": meta.get("page_num") if meta else None,
             })
 
         logger.debug("[VectorRepo] 查詢完成：query='%s', 返回 %d 段落", query[:30], len(passages))

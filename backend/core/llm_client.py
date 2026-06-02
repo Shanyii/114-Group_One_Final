@@ -120,6 +120,7 @@ class LLMClient:
             result = genai.embed_content(
                 model=self.settings.embedding_model,
                 content=text,
+                task_type="RETRIEVAL_DOCUMENT",
             )
             return result["embedding"]
         except Exception as exc:
@@ -128,7 +129,7 @@ class LLMClient:
 
     async def embed_query(self, query: str) -> list[float]:
         """
-        將查詢語句向量化（使用 retrieval_query task type）。
+        將查詢語句向量化（使用 RETRIEVAL_QUERY task type）。
 
         Args:
             query: 使用者查詢字串
@@ -143,6 +144,7 @@ class LLMClient:
             result = genai.embed_content(
                 model=self.settings.embedding_model,
                 content=query,
+                task_type="RETRIEVAL_QUERY",
             )
             return result["embedding"]
         except Exception as exc:

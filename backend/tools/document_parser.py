@@ -9,6 +9,7 @@
 
 import logging
 import os
+import re
 import uuid
 from pathlib import Path
 
@@ -19,6 +20,107 @@ from pptx import Presentation
 from core.config import get_settings
 
 logger = logging.getLogger(__name__)
+
+
+class RecursiveCharacterTextSplitter:
+    """
+    智慧型遞迴字元切分器。
+    優先以段落 (\\n\\n)、換行 (\\n)、中文標點 (。、？、！、；、，、、) 等邊界進行切分，
+    確保切分出的每一個 Chunk 長度都不超過 chunk_size，且盡可能保留語意完整性。
+    """
+
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
+        # 依重要性優先級排序的分隔符號
+        self.separators = [
+            "\n\n", "\n", "。", "？", "！", "；", "；", "，", "、",
+            ". ", "? ", "! ", ", ", ",", " ", ""
+        ]
+
+    def split_text(self, text: str) -> list[str]:
+        """遞迴切分入口。"""
+        return self._split_text(text, self.separators)
+
+    def _split_text(self, text: str, separators: list[str]) -> list[str]:
+        # 如果文字長度已經小於等於 chunk_size，直接返回
+        if len(text) <= self.chunk_size:
+            return [text]
+
+        # 如果沒有分隔符號了，強行按 chunk_size 切片
+        if not separators:
+            chunks = []
+            start = 0
+            while start < len(text):
+                chunks.append(text[start : start + self.chunk_size])
+                start += self.chunk_size - self.chunk_overlap
+            return chunks
+
+        # 選擇當前層級的分隔符號
+        separator = separators[0]
+        next_separators = separators[1:]
+
+        # 使用分隔符號切割
+        if separator == "":
+            splits = list(text)
+        else:
+            splits = text.split(separator)
+
+        leaf_chunks = []
+        for i, split in enumerate(splits):
+            # 保留分隔符號（如標點符號不該被丟失，應加回前一個句子的尾部）
+            punctuation_separators = ["。", "？", "！", "；", "，", "、", ". ", "? ", "! ", ", ", ","]
+            if i < len(splits) - 1 and separator in punctuation_separators:
+                split_content = split + separator
+            else:
+                split_content = split
+
+            if not split_content.strip():
+                continue
+
+            # 遞迴切分
+            leaf_chunks.extend(self._split_text(split_content, next_separators))
+
+        # 將葉子節點合併為滿足 chunk_size 和 chunk_overlap 的 chunks
+        merged_chunks = []
+        current_pieces = []
+        current_len = 0
+
+        for piece in leaf_chunks:
+            piece_len = len(piece)
+            if piece_len > self.chunk_size:
+                if current_pieces:
+                    merged_chunks.append("".join(current_pieces).strip())
+                    current_pieces = []
+                    current_len = 0
+                merged_chunks.append(piece)
+                continue
+
+            if current_len + piece_len > self.chunk_size:
+                if current_pieces:
+                    merged_chunks.append("".join(current_pieces).strip())
+
+                # 計算 overlap：保留部分舊的 pieces
+                # 限制：除了長度不超過 chunk_overlap 外，新 Chunk (overlap + piece) 的總長度也絕不能超過 chunk_size
+                overlap_pieces = []
+                overlap_len = 0
+                for p in reversed(current_pieces):
+                    if (overlap_len + len(p) <= self.chunk_overlap) and (overlap_len + len(p) + piece_len <= self.chunk_size):
+                        overlap_pieces.insert(0, p)
+                        overlap_len += len(p)
+                    else:
+                        break
+
+                current_pieces = overlap_pieces + [piece]
+                current_len = overlap_len + piece_len
+            else:
+                current_pieces.append(piece)
+                current_len += piece_len
+
+        if current_pieces:
+            merged_chunks.append("".join(current_pieces).strip())
+
+        return merged_chunks
 
 # ── 支援的 MIME Type 白名單 ───────────────────────────────────────────────────
 ALLOWED_MIME_TYPES = {
@@ -150,27 +252,67 @@ class DocumentParser:
             raise ValueError(f"PPTX 解析失敗：{exc}") from exc
         return "\n\n".join(texts)
 
-    def chunk_text(self, text: str) -> list[str]:
+    def chunk_text(self, text: str) -> list[dict]:
         """
-        將純文字切分為固定大小的 Chunk（有重疊）。
+        將純文字切分為智慧型的 Chunk，並帶有頁碼/投影片 Metadata。
+
+        步驟：
+        1. 透過 Regex 解析 PDF / PPTX 的頁碼標記
+        2. 將文字分成不同頁面的段落
+        3. 對每一頁使用 RecursiveCharacterTextSplitter 進行智慧切分
+        4. 打上正確的 page_num metadata
 
         Args:
-            text: 原始純文字
+            text: 原始純文字（可能含 page 標記）
 
         Returns:
-            list[str]: Chunk 列表（非空）
+            list[dict]: 每個項目包含：
+                - text: 切分出的文字 Chunk
+                - page_num: 所在的頁碼（整數，預設為 1）
         """
         chunk_size = self.settings.chunk_size
         overlap = self.settings.chunk_overlap
+        splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=overlap)
+
+        # 透過 Regex 尋找 --- 第 X 頁 --- 或 --- 第 X 張投影片 ---
+        page_pattern = r"--- 第 (\d+) (頁|張投影片) ---"
+        matches = list(re.finditer(page_pattern, text))
+
+        segments = []
+        if not matches:
+            # 沒有任何頁面標記，將整個文字視為第 1 頁
+            segments.append((text, 1))
+        else:
+            # 處理第一個標記之前的內容（若有）
+            first_start = matches[0].start()
+            if first_start > 0:
+                pre_text = text[:first_start].strip()
+                if pre_text:
+                    segments.append((pre_text, 1))
+
+            # 處理標記之間的內容
+            for i in range(len(matches)):
+                current_match = matches[i]
+                page_num = int(current_match.group(1))
+                segment_start = current_match.end()
+                segment_end = matches[i + 1].start() if i < len(matches) - 1 else len(text)
+
+                page_text = text[segment_start:segment_end].strip()
+                if page_text:
+                    segments.append((page_text, page_num))
+
         chunks = []
-        start = 0
-        while start < len(text):
-            end = start + chunk_size
-            chunk = text[start:end].strip()
-            if chunk:
-                chunks.append(chunk)
-            start += chunk_size - overlap
-        logger.debug("[DocParser] 切分完成：%d 個 Chunks", len(chunks))
+        for page_text, page_num in segments:
+            # 智慧遞迴切分這一頁的文字
+            page_chunks = splitter.split_text(page_text)
+            for pc in page_chunks:
+                if pc.strip():
+                    chunks.append({
+                        "text": pc,
+                        "page_num": page_num
+                    })
+
+        logger.info("[DocParser] 智慧切分完成：共 %d 個 Chunks", len(chunks))
         return chunks
 
     async def read_from_db(self, document_id: str) -> str:
@@ -195,15 +337,15 @@ class DocumentParser:
                     raise ValueError(f"找不到文件或文字為空：{document_id}")
                 return row[0]
 
-    async def get_chunks(self, document_id: str) -> list[str]:
+    async def get_chunks(self, document_id: str) -> list[dict]:
         """
-        取得文件的 Chunk 列表（從 DB 讀取後切分）。
+        取得文件的 Chunk 列表（從 DB 讀取後切分，包含 page_num）。
 
         Args:
             document_id: 文件 UUID
 
         Returns:
-            list[str]: Chunk 列表
+            list[dict]: 帶有 page_num metadata 的 Chunk 列表
         """
         raw_text = await self.read_from_db(document_id)
         return self.chunk_text(raw_text)
