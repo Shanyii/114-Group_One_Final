@@ -214,6 +214,33 @@ class QuizRecord(Base):
     )
 
 
+# ── Agent 生成題目資料表 ──────────────────────────────────────────────────────
+
+class GeneratedQuiz(Base):
+    """
+    Agent 生成的測驗題目資料表。
+
+    當 Agent 執行 generate_quiz 步驟後，自動把題目與正確答案存入此表。
+    批改時直接從這裡撈取正確答案，前端不需要傳 correct_answer。
+    """
+    __tablename__ = "generated_quizzes"
+
+    quiz_id = Column(String(36), primary_key=True, comment="UUID")
+    task_id = Column(String(36), ForeignKey("tasks.task_id"), nullable=False)
+    quiz_index = Column(Integer, nullable=False, comment="題目序號（從 0 開始）")
+    topic = Column(String(200), nullable=False, comment="對應主題")
+    question = Column(Text, nullable=False, comment="題目內容")
+    options = Column(JSON, nullable=True, comment="選項列表")
+    correct_answer = Column(Text, nullable=False, comment="正確答案")
+    explanation = Column(Text, nullable=True, comment="解析說明")
+    question_type = Column(String(50), nullable=False, default="multiple_choice")
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("idx_generated_quizzes_task_id", "task_id"),
+    )
+
+
 # ── 資料庫初始化工具函式 ──────────────────────────────────────────────────────
 
 def create_tables(database_url: str) -> None:

@@ -19,6 +19,7 @@
 @version 1.1.0
 """
 
+import json
 import logging
 import time
 import uuid
@@ -137,6 +138,10 @@ class Orchestrator:
                     )
                     context[step_name] = output
 
+                    # Step 4 完成後，自動將生成的題目存入 DB
+                    if step_num == 4 and isinstance(output, list) and output:
+                        await self._save_generated_quizzes(task_id, output)
+
                     duration_ms = int((time.time() - step_start) * 1000)
                     tools_called.append({
                         "tool": step_name,
@@ -226,10 +231,10 @@ class Orchestrator:
             query = context.get("instruction", "")
             return await self.rag_retriever.retrieve(query, document_id)
         elif step_num == 3:
-            passages = context.get("retrieve_content", [])
+            passages = self._get_passages_with_fallback(context)
             return await self.summarizer.summarize(passages, provider=llm_provider)
         elif step_num == 4:
-            passages = context.get("retrieve_content", [])
+            passages = self._get_passages_with_fallback(context)
             topic = context.get("topic", "講義內容")
             return await self.quiz_generator.generate(passages, topic, provider=llm_provider)
         elif step_num == 7:
@@ -240,6 +245,25 @@ class Orchestrator:
         elif step_num == 8:
             return "save_log_done"
         return None
+
+    def _get_passages_with_fallback(self, context: dict) -> list[dict]:
+        """
+        取得 RAG 段落，若為空則用 Step 1 讀取的原文作為 fallback。
+        這確保即使向量索引為空，Summarizer 與 QuizGenerator 仍有內容可處理。
+        """
+        passages = context.get("retrieve_content", [])
+        if passages:
+            return passages
+
+        # Fallback: 使用 read_document 的原始文字，切成一個虛擬段落
+        raw_text = context.get("read_document", "")
+        if raw_text:
+            # 取前 3000 字以避免 Token 爆量
+            truncated = raw_text[:3000]
+            logger.info("[Orchestrator] RAG 檢索為空，改用原文 fallback（%d 字）", len(truncated))
+            return [{"text": truncated, "score": 1.0, "chunk_index": 0, "document_id": ""}]
+
+        return []
 
     # ── DB 輔助方法 ────────────────────────────────────────────────────────────
 
@@ -267,3 +291,35 @@ class Orchestrator:
                 "UPDATE tasks SET intent=? WHERE task_id=?", (intent, task_id)
             )
             await db.commit()
+
+    async def _save_generated_quizzes(self, task_id: str, quizzes: list[dict]) -> None:
+        """
+        將 Agent 生成的題目存入 generated_quizzes 資料表。
+        批改時直接從這裡撈正確答案，前端不需要傳 correct_answer。
+        """
+        try:
+            async with aiosqlite.connect(self.settings.database_url) as db:
+                for i, q in enumerate(quizzes):
+                    quiz_id = str(uuid.uuid4())
+                    await db.execute(
+                        """
+                        INSERT INTO generated_quizzes
+                        (quiz_id, task_id, quiz_index, topic, question, options,
+                         correct_answer, explanation, question_type, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            quiz_id, task_id, i,
+                            q.get("topic", ""),
+                            q.get("question", ""),
+                            json.dumps(q.get("options", []), ensure_ascii=False),
+                            q.get("correct_answer", ""),
+                            q.get("explanation", ""),
+                            q.get("question_type", "multiple_choice"),
+                            datetime.utcnow().isoformat(),
+                        ),
+                    )
+                await db.commit()
+            logger.info("[Orchestrator] 已儲存 %d 題生成題目至 DB (task_id=%s)", len(quizzes), task_id)
+        except Exception as exc:
+            logger.error("[Orchestrator] 儲存生成題目失敗：%s", exc)

@@ -72,15 +72,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ── CORS 設定（ADR Q3：前後端同機，預設不需要 CORS）─────────────────────────
-# 若未來分離部署，取消下方注解並設定正確的 allow_origins
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["http://localhost:3000"],
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
+# ── CORS 設定（開發模式允許所有來源，生產環境需收緊）─────────────────────────
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 生產環境請改為具體前端網址
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ── API 路由掛載 ───────────────────────────────────────────────────────────────
 API_PREFIX = "/api"

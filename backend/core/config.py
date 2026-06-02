@@ -3,12 +3,33 @@
 @description 系統設定模組，從 .env 載入所有環境變數並提供型別安全的存取介面。
 @dependencies pydantic-settings, python-dotenv
 @author 黃柏豪（後端 / 系統整合）
-@version 1.1.0
+@version 1.2.0
 """
+
+import os
+from pathlib import Path
 
 from pydantic_settings import BaseSettings
 from pydantic import Field
 from functools import lru_cache
+
+
+def _find_env_file() -> str:
+    """自動偵測 .env 位置，支援從根目錄或 backend 目錄啟動。"""
+    # 優先：與 config.py 同層的上一層（backend/.env）
+    this_dir = Path(__file__).resolve().parent.parent  # backend/
+    candidate = this_dir / ".env"
+    if candidate.exists():
+        return str(candidate)
+    # 其次：CWD 下的 .env
+    cwd_env = Path.cwd() / ".env"
+    if cwd_env.exists():
+        return str(cwd_env)
+    # 最後：CWD 下的 backend/.env
+    cwd_backend_env = Path.cwd() / "backend" / ".env"
+    if cwd_backend_env.exists():
+        return str(cwd_backend_env)
+    return ".env"  # fallback
 
 
 class Settings(BaseSettings):
@@ -49,7 +70,7 @@ class Settings(BaseSettings):
     llm_retry_wait_min: float = Field(1.0, description="重試最小等待秒數")
     llm_retry_wait_max: float = Field(10.0, description="重試最大等待秒數")
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    model_config = {"env_file": _find_env_file(), "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 @lru_cache(maxsize=1)

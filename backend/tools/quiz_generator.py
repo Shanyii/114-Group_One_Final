@@ -99,7 +99,7 @@ class QuizGenerator:
             raw = await self._llm.complete(
                 prompt=prompt,
                 temperature=0.5,
-                max_tokens=2048,
+                max_tokens=4096,
                 provider=provider,
                 is_json=True,
             )
@@ -115,20 +115,9 @@ class QuizGenerator:
             return []
 
     def _parse_questions(self, raw: str) -> list[dict]:
-        """解析 LLM 返回的 JSON 題目陣列，容忍格式異常。"""
-        # 原生 JSON 模式應該已經回傳乾淨的 JSON，預防萬一保留去除 markdown 的邏輯
-        match = re.search(r"```json\s*(.*?)\s*```", raw, re.DOTALL)
-        if match:
-            raw = match.group(1)
-        else:
-            match = re.search(r"\[.*\]", raw, re.DOTALL)
-            if match:
-                raw = match.group(0)
-
-        try:
-            questions = json.loads(raw)
-            if isinstance(questions, list):
-                return questions
-        except json.JSONDecodeError:
-            logger.warning("[QuizGen] JSON 解析失敗，返回空列表")
+        """解析 LLM 返回的 JSON 題目陣列，並使用 safe_json_loads 容忍截斷或格式異常。"""
+        from core.json_helper import safe_json_loads
+        questions = safe_json_loads(raw, default_factory=list)
+        if isinstance(questions, list):
+            return questions
         return []

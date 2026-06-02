@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Literal
 
@@ -211,23 +212,30 @@ class LLMClient:
     def _complete_mock(self, prompt: str) -> str:
         """回傳測試用的假資料，不用呼叫真實 API"""
         if "題" in prompt or "question" in prompt.lower():
-            return """```json
-[
-  {
-    "topic": "Mock 測試主題",
-    "question": "這是一題來自 Mock 模式的假題目，請問正確答案是什麼？",
-    "options": ["A", "B", "C", "D"],
-    "answer": "A",
-    "explanation": "因為現在在 Mock 展示模式下，所以自動選 A。"
-  }
-]
-```"""
+            return json.dumps([
+                {
+                    "topic": "Mock 測試主題",
+                    "question": "這是一題來自 Mock 模式的假題目，請問正確答案是什麼？",
+                    "options": ["A. Mock 選項一", "B. Mock 選項二", "C. Mock 選項三", "D. Mock 選項四"],
+                    "correct_answer": "A. Mock 選項一",
+                    "explanation": "因為現在在 Mock 展示模式下，所以自動選 A。"
+                }
+            ], ensure_ascii=False)
         elif "計畫" in prompt or "plan" in prompt.lower():
-            return "1. 第一天：複習測試資料\\n2. 第二天：繼續複習測試資料"
+            return "1. 第一天：複習測試資料\n2. 第二天：繼續複習測試資料"
         elif "評分" in prompt or "grade" in prompt.lower():
             return "答對了，太棒了！"
         else:
-            return "這是一段重點摘要：這份文件提到了很多重要知識點（Mock 模式展示用）。"
+            return json.dumps({
+                "summary": "這份講義涵蓋了課程的核心概念與實作步驟（Mock 模式展示用）。",
+                "key_points": [
+                    "• 重點一：這是 Mock 模式的模擬重點",
+                    "• 重點二：實際使用時會由 Gemini AI 生成真實摘要",
+                    "• 重點三：系統架構採用 FastAPI + ChromaDB + Gemini",
+                    "• 重點四：支援 PDF 與 PPTX 講義格式",
+                    "• 重點五：整合 RAG 向量語意檢索技術"
+                ]
+            }, ensure_ascii=False)
 
 
 # ── 全域單例（避免重複初始化）────────────────────────────────────────────────

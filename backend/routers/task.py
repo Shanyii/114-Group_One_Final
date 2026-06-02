@@ -122,14 +122,13 @@ async def get_task_status(task_id: str):
         ) as cursor:
             row = await cursor.fetchone()
 
-    if row is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"找不到任務：{task_id}",
-        )
+        if row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"找不到任務：{task_id}",
+            )
 
-    # 查詢已完成步驟數（從 workflow_logs 計算）
-    async with aiosqlite.connect(settings.database_url) as db:
+        # 同一連線內查詢已完成步驟數
         async with db.execute(
             "SELECT COUNT(*) FROM workflow_logs WHERE task_id = ? AND status = 'success'",
             (task_id,),

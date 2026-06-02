@@ -78,7 +78,7 @@ class Summarizer:
             raw = await self._llm.complete(
                 prompt=prompt,
                 temperature=0.3,
-                max_tokens=1024,
+                max_tokens=4096,
                 provider=provider,
                 is_json=True,
             )
@@ -91,14 +91,12 @@ class Summarizer:
             return {"topic": topic, "summary": f"摘要生成失敗：{exc}", "key_points": []}
 
     def _parse_json_response(self, raw: str) -> dict:
-        """解析 LLM 返回的 JSON，容忍格式不完整的情況。"""
-        # 原生 JSON 模式應該已經回傳乾淨的 JSON，但預防萬一還是保留 markdown 去除
-        match = re.search(r"```json\s*(.*?)\s*```", raw, re.DOTALL)
-        if match:
-            raw = match.group(1)
-
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
-            logger.warning("[Summarizer] JSON 解析失敗，使用原始文字")
-            return {"summary": raw.strip(), "key_points": []}
+        """解析 LLM 返回的 JSON，並使用 safe_json_loads 容忍截斷或格式異常。"""
+        from core.json_helper import safe_json_loads
+        res = safe_json_loads(raw, default_factory=dict)
+        if isinstance(res, dict):
+            # 補齊預設值
+            res.setdefault("summary", "")
+            res.setdefault("key_points", [])
+            return res
+        return {"summary": str(raw), "key_points": []}

@@ -103,12 +103,9 @@ class StudentStateResponse(BaseModel):
 # ── 批改相關 Schema ───────────────────────────────────────────────────────────
 
 class AnswerItem(BaseModel):
-    """單題作答。"""
-    question: str = Field(..., description="題目內容")
-    topic: str = Field(..., description="對應主題，如 TF-IDF")
+    """單題作答（簡化版：前端只需傳題目序號和學生答案）。"""
+    quiz_index: int = Field(..., description="題目序號（對應 generated_quizzes 的 quiz_index）")
     student_answer: str = Field(..., description="學生作答")
-    correct_answer: str = Field(..., description="正確答案")
-    options: Optional[list[str]] = Field(None, description="選項（選擇題用）")
 
 
 class GradeRequest(BaseModel):
