@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StudyAgent AI - 課堂講義學習與複習規劃系統</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- 頂部標頭 -->
+        <header>
+            <div class="logo-section">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3z"/>
+                        <path d="M22 12.91l-1.21-.66L12 17.18l-8.79-4.93L2 12.91V18l10 6 10-6v-5.09z"/>
+                    </svg>
+                </div>
+                <h1>StudyAgent AI</h1>
+                <span>Agentic Learning</span>
+            </div>
+            <div class="header-actions">
+                <button id="btn-export" class="btn btn-secondary" style="display: none;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    匯出複習報告
+                </button>
+                <button id="btn-reset" class="btn btn-secondary" style="display: none;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                        <polyline points="3 3 3 8 8 8"></polyline>
+                    </svg>
+                    上傳新講義
+                </button>
+            </div>
+        </header>
+
+        <!-- 主體內容容器 -->
+        <main>
+            <!-- 畫面 1: 講義上傳與範例選擇頁面 -->
+            <section id="screen-upload" class="screen active">
+                <div class="panel">
+                    <div class="upload-grid">
+                        <!-- 左側：檔案與文字上傳區 -->
+                        <div class="upload-left">
+                            <div class="upload-header">
+                                <h2>課堂講義複習規劃</h2>
+                                <p>上傳課堂講義 PDF 或直接貼上簡報文字，AI Agent 將會為您萃取核心重点、設計測驗，並自動排定複習計畫。</p>
+                            </div>
+                            
+                            <!-- 檔案拖放 -->
+                            <div class="dropzone-container" id="dropzone">
+                                <div class="dropzone-icon">📥</div>
+                                <div class="dropzone-text">
+                                    <h3>拖放您的講義檔案至此</h3>
+                                    <p>支援 PDF, PPTX, TXT 或 Markdown 格式檔案</p>
+                                </div>
+                                <input type="file" id="file-input" class="file-input" accept=".pdf,.pptx,.txt,.md">
+                            </div>
+
+                            <div class="text-input-divider">或者直接貼上課程文字內容</div>
+
+                            <!-- 文字貼上 -->
+                            <textarea id="custom-text" class="custom-text-area" placeholder="請在此處貼上投影片大綱、講義文字或課堂筆記..."></textarea>
+
+                            <!-- 開始分析按鈕 -->
+                            <button id="btn-start-agent" class="btn btn-primary" style="width: 100%; padding: 1rem;">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                                </svg>
+                                啟動 AI Agent 分析
+                            </button>
+                        </div>
+
+                        <!-- 右側：內建範例快速測試 -->
+                        <div class="presets-panel">
+                            <div class="preset-title">
+                                💡 快速測試內建講義範例
+                            </div>
+                            
+                            <div class="preset-card active" data-preset="1">
+                                <div class="preset-badge">熱門推薦</div>
+                                <h4>1. 機器學習與深度學習基礎</h4>
+                                <p>重點分析：監督式學習、Loss 函數、梯度下降與過擬合正規化防禦</p>
+                            </div>
+
+                            <div class="preset-card" data-preset="2">
+                                <div class="preset-badge">基礎演算法</div>
+                                <h4>2. 資料結構 - 二元搜尋樹 (BST)</h4>
+                                <p>重點分析：BST 性質、走訪演算法、新增節點與刪除節點複雜度</p>
+                            </div>
+
+                            <div class="preset-card" data-preset="3">
+                                <div class="preset-badge">系統觀念</div>
+                                <h4>3. 作業系統 - 行程排程演算法</h4>
+                                <p>重點分析：排程評估指標、FCFS/SJF/RR 規則與 CPU 內文切換</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 畫面 2: Agent 工作流展示頁面 (Step-by-step) -->
+            <section id="screen-agent" class="screen">
+                <div class="panel">
+                    <div class="upload-header">
+                        <h2>AI Agent 工作流執行中</h2>
+                        <p>後端複數 Agent 正在為您的講義進行多角度深度處理，這可能需要幾秒鐘...</p>
+                    </div>
+
+                    <div class="agent-flow-container">
+                        <!-- 左側：流程樹動畫 -->
+                        <div class="flow-visualization">
+                            <div class="flow-line"></div>
+                            <div class="flow-line-progress" id="flow-line-progress"></div>
+
+                            <div class="flow-step active" id="step-parser">
+                                <div class="step-node">1</div>
+                                <div class="step-info">
+                                    <h4>解析檔案與結構識別</h4>
+                                    <p>Parser Agent | 抽取 PDF/文字的層次階層與編碼</p>
+                                </div>
+                            </div>
+
+                            <div class="flow-step" id="step-intent">
+                                <div class="step-node">2</div>
+                                <div class="step-info">
+                                    <h4>語意分析與學術庫檢索</h4>
+                                    <p>Intent & RAG Agent | 核對術語庫並提取關鍵領域</p>
+                                </div>
+                            </div>
+
+                            <div class="flow-step" id="step-summary">
+                                <div class="step-node">3</div>
+                                <div class="step-info">
+                                    <h4>生成投影片重點摘要</h4>
+                                    <p>Summary Agent | 去除贅字，濃縮高含金量重點大綱</p>
+                                </div>
+                            </div>
+
+                            <div class="flow-step" id="step-quiz">
+                                <div class="step-node">4</div>
+                                <div class="step-info">
+                                    <h4>智能出題與考點設計</h4>
+                                    <p>Quiz Agent | 模擬考題、多重選項與防偏誤觀念驗證</p>
+                                </div>
+                            </div>
+
+                            <div class="flow-step" id="step-roadmap">
+                                <div class="step-node">5</div>
+                                <div class="step-info">
+                                    <h4>路徑規劃與一致性檢驗</h4>
+                                    <p>Critic & Response Agent | 校對出題品質，封裝學習地圖</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 右側：Agent 控制台 Terminal 輸出 -->
+                        <div class="agent-terminal">
+                            <div class="terminal-header">
+                                <div class="terminal-dots">
+                                    <span class="dot dot-red"></span>
+                                    <span class="dot dot-yellow"></span>
+                                    <span class="dot dot-green"></span>
+                                </div>
+                                <div class="terminal-title">AGENT_CONSOLE_OUTPUT</div>
+                                <div style="width: 40px;"></div>
+                            </div>
+                            <div class="terminal-body" id="terminal-body">
+                                <!-- 日誌內容由 JS 動態生成 -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 畫面 3: Dashboard (重點整理、測驗、結果) -->
+            <section id="screen-dashboard" class="screen">
+                <!-- 導覽頁籤 -->
+                <nav class="dashboard-nav">
+                    <button class="tab-btn active" data-tab="summary">
+                        📝 重點整理大綱
+                    </button>
+                    <button class="tab-btn" data-tab="quiz">
+                        ✍️ 知識評估測驗
+                    </button>
+                </nav>
+
+                <!-- 頁籤一：重點整理大綱 -->
+                <div id="tab-summary" class="tab-content active">
+                    <div class="summary-container">
+                        <!-- 左側：大綱列表 -->
+                        <div class="summary-main" id="summary-main-list">
+                            <!-- 由 JS 動態生成重點卡片 -->
+                        </div>
+
+                        <!-- 右側：核心名詞翻牌 -->
+                        <div class="glossary-sidebar">
+                            <div class="glossary-header">
+                                <span>💡</span> 核心詞彙閃卡 (點擊翻牌)
+                            </div>
+                            <div class="flashcard-grid" id="flashcard-grid">
+                                <!-- 由 JS 動態生成詞彙閃卡 -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 頁籤二：測驗題畫面 -->
+                <div id="tab-quiz" class="tab-content">
+                    <div class="quiz-wrapper">
+                        <!-- 進度條 -->
+                        <div class="quiz-progress-bar-container">
+                            <div class="quiz-progress-bar" id="quiz-progress-bar"></div>
+                        </div>
+
+                        <div class="quiz-meta">
+                            <div>目前進度：<span id="quiz-current-num">1</span> / <span id="quiz-total-num">5</span> 題</div>
+                            <div style="color: var(--primary);">測驗進行中</div>
+                        </div>
+
+                        <!-- 題目渲染容器 -->
+                        <div id="quiz-question-container">
+                            <!-- 由 JS 動態渲染當前題目 -->
+                        </div>
+
+                        <!-- 測驗導覽按鈕 -->
+                        <div class="quiz-actions">
+                            <button id="btn-prev-question" class="btn btn-secondary">
+                                ◀ 上一題
+                            </button>
+                            <button id="btn-next-question" class="btn btn-primary">
+                                下一題 ▶
+                            </button>
+                            <button id="btn-submit-quiz" class="btn btn-primary" style="display: none; background: linear-gradient(135deg, var(--accent), #059669);">
+                                📤 提交測驗答案
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 頁籤三：結果與複習路徑呈現 (提交答案後自動顯示) -->
+                <div id="tab-results" class="tab-content">
+                    <div class="panel" style="margin-top: 1rem;">
+                        <div class="results-grid">
+                            <!-- 左側：得分與重新測驗 -->
+                            <div class="score-panel">
+                                <h3>評估報告</h3>
+                                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1.5rem;">觀念診斷得分</p>
+                                
+                                <div class="circular-progress" id="score-circle">
+                                    <div class="score-value-container">
+                                        <span class="score-num" id="score-num">0</span>
+                                        <span class="score-label">Score</span>
+                                    </div>
+                                </div>
+                                
+                                <button id="btn-retry-quiz" class="btn btn-primary" style="width: 80%; margin-bottom: 1rem;">
+                                    🔄 重新接受測驗
+                                </button>
+                                <button id="btn-review-study" class="btn btn-secondary" style="width: 80%;">
+                                    📖 返回講義複習
+                                </button>
+                            </div>
+
+                            <!-- 右側：複習地圖與錯題解析 -->
+                            <div class="results-analysis">
+                                <!-- AI 個人化地圖 -->
+                                <div class="roadmap-card">
+                                    <div class="roadmap-header">
+                                        <svg viewBox="0 0 24 24">
+                                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
+                                        </svg>
+                                        AI 個人化複習路徑規劃
+                                    </div>
+                                    <div class="roadmap-timeline" id="roadmap-timeline">
+                                        <!-- 由 JS 依據錯題動態生成 -->
+                                    </div>
+                                </div>
+
+                                <!-- 錯題與詳解 -->
+                                <div style="margin-top: 1.5rem;">
+                                    <h4 style="font-family: var(--font-heading); font-size: 1.25rem; margin-bottom: 1rem; color: var(--text-primary);">
+                                        📝 答題狀況與 AI 解析回饋
+                                    </h4>
+                                    <div class="review-questions-list" id="review-questions-list">
+                                        <!-- 由 JS 動態生成錯題與標準答案對比 -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- 頁腳 -->
+        <footer>
+            <p>&copy; 2026 StudyAgent AI. 期末專題分工項目：使用者介面設計、使用流程 (UX)、Agent 流程展示、測驗頁與結果呈現。</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
