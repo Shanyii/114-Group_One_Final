@@ -1,0 +1,13 @@
+{
+  "user_id": "student_01",
+  "weak_topics": {
+    "TF-IDF觀念": 1,
+    "資料結構 - 二元搜尋樹 (Binary Search Tree)觀念": 3
+  },
+  "completed_quizzes": 11,
+  "correct_answers": 7,
+  "completed_lectures": [
+    "nlp_chapter3.pdf",
+    "nlp_chapter4.pdf"
+  ]
+}
