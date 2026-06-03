@@ -43,7 +43,7 @@ class QuizAgent(BaseAgent):
 
         if not self.client:
             print("[QuizAgent] 提示: 未偵測到 GEMINI_API_KEY，將啟用本地模擬出題。")
-            return self._mock_quiz(topic, count)
+            return self._mock_quiz(topic, count, rag_context)
 
         try:
             # Call Gemini with structured output configurations
@@ -63,9 +63,9 @@ class QuizAgent(BaseAgent):
             
         except Exception as e:
             print(f"[QuizAgent] API 呼叫或 JSON 解析失敗: {e}。啟用本地模擬出題。")
-            return self._mock_quiz(topic, count)
+            return self._mock_quiz(topic, count, rag_context)
 
-    def _mock_quiz(self, topic: str, count: int) -> list[dict]:
+    def _mock_quiz(self, topic: str, count: int, context: str = "") -> list[dict]:
         """
         Mock questions generated offline when API is unavailable.
         """
@@ -150,14 +150,41 @@ class QuizAgent(BaseAgent):
             mock_data = [
                 {
                     "id": 1,
-                    "topic": topic,
-                    "question": f"這是一題關於「{topic}」的模擬測驗題，請選出最合理的選項。",
-                    "options": ["A) 選項 A", "B) 選項 B", "C) 答案選 C", "D) 選項 D"],
-                    "answer": "C",
-                    "explanation": "此為模擬解析。在設定 API Key 後，系統會基於您的講義自動出題。",
-                    "source": "講義內容"
+                    "topic": "講義重點",
+                    "question": "根據您上傳的講義內容，以下關於課程主題的敘述何者最為正確？",
+                    "options": [
+                        "A) 講義主要是關於所上傳的學科或主題概念說明",
+                        "B) 講義主題與任何自然語言處理或課程核心無關",
+                        "C) 講義僅包含隨機亂碼，沒有任何實質學習觀念",
+                        "D) 以上皆非"
+                    ],
+                    "answer": "A",
+                    "explanation": "此為基於上傳講義的觀念檢索。您可以在設定 API Key 後獲得 AI 生成的精準客製化考題。",
+                    "source": "上傳講義內容"
                 }
             ]
+            
+            if context:
+                import re
+                lines = [l.strip() for l in context.split("\n") if len(l.strip()) > 12 and not l.startswith(("#", "第"))]
+                for line in lines:
+                    if "定義" in line or "是指" in line or "為" in line or "：" in line:
+                        clean_line = re.sub(r'^[\-\*\•\d\.]+\s*', '', line).strip()
+                        mock_data.append({
+                            "id": 2,
+                            "topic": "核心名詞理解",
+                            "question": f"講義提及：「{clean_line[:60]}...」，這代表了什麼重要觀念？",
+                            "options": [
+                                "A) 這說明了講義中提及的關鍵要素及其實際定義",
+                                "B) 這是一個不具任何參考價值的部分",
+                                "C) 這是有關排程或二元樹的無關公式",
+                                "D) 這只是一個系統產生的無用佔位符"
+                            ],
+                            "answer": "A",
+                            "explanation": f"講義原文中明確指出：「{clean_line}」",
+                            "source": "上傳講義內容"
+                        })
+                        break
             
         # Return only the requested number of questions
         return mock_data[:count]

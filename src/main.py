@@ -48,6 +48,45 @@ class StudyAgentSystem:
             
         tools.save_log("System", "所有測試講義預載入完成，知識庫已就緒！")
 
+    def _parse_student_option(self, text: str) -> str | None:
+        """
+        解析學生的輸入是否為單一的選擇題選項（如 A, B, C, D）。
+        支援各種彈性格式，包括前後空格、括號、標點與常見的答題描述。
+        """
+        import re
+        if not text:
+            return None
+            
+        text_clean = text.strip()
+        
+        # 1. 只有單個字母（前後可能有空白、括號或標點符號，例如 " B ", "b.", "(A)", "C、", "d)"）
+        single_letter_match = re.search(r'^\s*[\(\[\{【]?\s*([A-Da-d])\s*[\)\]\}】\.\、]?\s*$', text_clean)
+        if single_letter_match:
+            return single_letter_match.group(1).upper()
+            
+        # 2. 包含明確的選取關鍵字（如 "我選B", "選 B", "答案是B", "選項是B", "選A項"）
+        pattern_after = re.search(
+            r'(?:選|答案是|寫|答|選擇|選項為|應該是|答案|是|為)\s*[:：\-—、\s,\"\'「『\(（]?\s*([A-Da-d])\s*[:：\-—、\s,\"\'」』\)）]?', 
+            text_clean
+        )
+        if pattern_after:
+            return pattern_after.group(1).upper()
+
+        pattern_before = re.search(
+            r'[\"\'「『\(（]?\s*([A-Da-d])\s*[\"\'」』\)）]?\s*(?:選項|是答案|對|才對|比較對|這選項)',
+            text_clean
+        )
+        if pattern_before:
+            return pattern_before.group(1).upper()
+            
+        # 3. 如果字串非常短（長度小於等於 5）且包含 A, B, C, D 字母
+        if len(text_clean) <= 5:
+            short_match = re.search(r'([A-Da-d])', text_clean)
+            if short_match:
+                return short_match.group(1).upper()
+                
+        return None
+
     def run_command(self, user_input: str):
         """
         處理使用者輸入，進行意圖路由與對應工具調用。
@@ -59,17 +98,31 @@ class StudyAgentSystem:
         print("\n" + "-"*40)
         tools.save_log("User", f"使用者輸入: '{user_input}'")
 
-        # 呼叫 IntentClassifier 判斷意圖
-        tools.save_log("IntentClassifier", "分析使用者意圖與參數中...")
-        routing = self.router.classify_intent(user_input)
-        
-        intent = routing.get("intent")
-        confidence = routing.get("confidence", 0.0)
-        params = routing.get("parameters", {})
-        explanation = routing.get("explanation", "")
-        
-        tools.save_log("IntentClassifier", f"分析結果: 意圖為 [{intent}] (信心度: {confidence:.2f})")
-        print(f"💡 [意圖理由]：{explanation}")
+        # 優先檢查是否為進行中的測驗，且輸入可以被解析成選項
+        detected_option = None
+        if self.active_quiz:
+            detected_option = self._parse_student_option(user_input)
+
+        if detected_option:
+            tools.save_log("System", f"偵測到測驗進行中，且輸入可識別為選項：'{detected_option}'")
+            intent = "GRADING"
+            confidence = 1.0
+            params = {"student_answer": user_input}  # 傳遞原始作答，讓批改 Agent 也能保留學生原始輸入
+            explanation = f"測驗進行中，且使用者輸入符合選項格式，系統自動識別選項為 {detected_option} 並路由至批改流程。"
+            tools.save_log("IntentClassifier", f"分析結果 (自動路由): 意圖為 [{intent}] (信心度: {confidence:.2f})")
+            print(f"💡 [意圖理由]：{explanation}")
+        else:
+            # 呼叫 IntentClassifier 判斷意圖
+            tools.save_log("IntentClassifier", "分析使用者意圖與參數中...")
+            routing = self.router.classify_intent(user_input)
+            
+            intent = routing.get("intent")
+            confidence = routing.get("confidence", 0.0)
+            params = routing.get("parameters", {})
+            explanation = routing.get("explanation", "")
+            
+            tools.save_log("IntentClassifier", f"分析結果: 意圖為 [{intent}] (信心度: {confidence:.2f})")
+            print(f"💡 [意圖理由]：{explanation}")
         
         # 根據意圖路由到對應的工具處理
         if intent == "SUMMARY":
@@ -132,9 +185,9 @@ class StudyAgentSystem:
         print(f"\n=== 📝 隨堂小測驗 (已產生 {len(quizzes)} 題，以下為第 1 題) ===")
         print(f"題目: {self.active_quiz.get('question')}")
         print("選項:")
-        for opt in self.active_quiz.get("options", []):
-            print(f"  {opt}")
-        print(f"[提示: 請直接輸入 '我選 A' 或類似內容來回答！]")
+        for idx, opt in enumerate(self.active_quiz.get("options", []), 1):
+            print(f"  [{idx}] {opt}")
+        print(f"[提示: 請直接輸入選項對應的數字 1-4，或輸入字母 A-D 作答！]")
         print("==================================================\n")
         
         tools.save_log("QuizAgent", f"測驗題已呈現。已暫存第 1 題作答指標，待學生輸入。")
@@ -230,28 +283,85 @@ def main():
     # 建立系統
     system = StudyAgentSystem()
     
-    print("\n💡 系統已就緒！您可以輸入任何想要執行的動作。")
-    print("  * 輸入「幫我整理 TF-IDF 重點」來測試摘要。")
-    print("  * 輸入「出 2 題 TF-IDF」來測試出題，出題後輸入「我選 B」進行答題。")
-    print("  * 輸入「產生讀書計畫」來規劃複習。")
-    print("  * 輸入 'state' 查看當前弱點檔案、'logs' 查看日誌檔路徑。")
-    print("  * 輸入 'exit' 退出系統。\n")
+    print("\n💡 系統已就緒！")
     
     while True:
         try:
-            user_input = input("靖恩您的指令 >> ").strip()
-            if not user_input:
+            print("\n" + "="*50)
+            print("  🌟 請選擇您想要執行的功能：")
+            print("  1. 📚 整理講義重點 (Generate Summary)")
+            print("  2. 📝 進行隨堂小測驗 (Take Quiz)")
+            print("  3. 📅 生成個人化複習計畫 (Generate Study Plan)")
+            print("  4. 💬 進行講義知識問答 (QA)")
+            print("  5. 💾 查看當前學習狀態 (View State)")
+            print("  6. 📂 查看系統日誌路徑 (View Logs)")
+            print("  7. ❌ 退出系統 (Exit)")
+            print("="*50)
+            
+            choice = input("👉 請輸入功能編號 (1-7): ").strip()
+            if not choice:
                 continue
                 
-            if user_input.lower() == 'exit':
+            if choice == '1':
+                print("\n[功能 - 整理講義重點]")
+                topic = input("📝 請輸入要整理的主題 (例如 'TF-IDF'，直接 Enter 則使用預設): ").strip()
+                topic = topic or "TF-IDF"
+                system.handle_summary({"topic": topic})
+                
+            elif choice == '2':
+                print("\n[功能 - 進行隨堂小測驗]")
+                topic = input("📝 請輸入要測驗的主題 (例如 'TF-IDF'，直接 Enter 則使用預設): ").strip()
+                topic = topic or "TF-IDF"
+                count_str = input("🔢 請輸入要測驗的題數 (預設為 3): ").strip()
+                count = 3
+                if count_str:
+                    try:
+                        count = int(count_str)
+                    except ValueError:
+                        print("無效的數字，將採用預設題數 3 題。")
+                
+                system.handle_quiz({"topic": topic, "count": count})
+                
+                # 測驗出題後，直接在選單中引導作答
+                if system.active_quiz:
+                    print("\n" + "-"*40)
+                    ans = input("✍️ 您的選擇 (請輸入數字 1-4 或字母 A-D，如 '2' / 'B'): ").strip()
+                    if ans:
+                        # 支援輸入數字 1-4 對應到 A-D
+                        num_mapping = {"1": "A", "2": "B", "3": "C", "4": "D"}
+                        mapped_ans = num_mapping.get(ans, ans)
+                        # 進行批改
+                        system.handle_grading({"student_answer": mapped_ans}, mapped_ans)
+                    else:
+                        print("⚠️ 未檢測到輸入，取消本次作答。")
+                        system.active_quiz = None
+                
+            elif choice == '3':
+                print("\n[功能 - 生成個人化複習計畫]")
+                exam_date = input("📅 請輸入預計考試日期 (格式如 2026-06-15，直接 Enter 則使用預設): ").strip()
+                exam_date = exam_date or "2026-06-15"
+                system.handle_study_plan({"exam_date": exam_date})
+                
+            elif choice == '4':
+                print("\n[功能 - 講義知識問答]")
+                question = input("💬 請輸入您想詢問講義的任何問題 (例如 '什麼是 TF-IDF？'): ").strip()
+                if question:
+                    system.handle_qa(question, {"topic": question})
+                else:
+                    print("⚠️ 問題不能為空！")
+                    
+            elif choice == '5':
+                system.show_state()
+                
+            elif choice == '6':
+                print(f"\n📂 本地日誌檔路徑: {tools.get_log_path()}\n")
+                
+            elif choice == '7':
                 print("👋 系統關閉，學習加油！")
                 break
-            elif user_input.lower() == 'state':
-                system.show_state()
-            elif user_input.lower() == 'logs':
-                print(f"\n📂 本地日誌檔路徑: {tools.get_log_path()}\n")
             else:
-                system.run_command(user_input)
+                print("❌ 無效的選擇，請輸入 1 至 7 的數字。")
+                
         except KeyboardInterrupt:
             print("\n👋 系統關閉，學習加油！")
             break

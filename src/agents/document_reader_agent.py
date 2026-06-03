@@ -84,5 +84,32 @@ TF-IDF 權重 (TF-IDF Weight)
         if path.suffix.lower() in [".txt", ".md"]:
             with open(path, "r", encoding="utf-8") as f:
                 return f.read()
+        elif path.suffix.lower() == ".pdf":
+            try:
+                import pypdf
+                reader = pypdf.PdfReader(path)
+                text_parts = []
+                for idx, page in enumerate(reader.pages, 1):
+                    page_text = page.extract_text()
+                    if page_text:
+                        text_parts.append(f"第{idx}頁：\n{page_text.strip()}")
+                return "\n\n".join(text_parts)
+            except Exception as e:
+                return f"[DocumentReaderAgent] 解析 PDF 失敗: {e}"
+        elif path.suffix.lower() == ".pptx":
+            try:
+                from pptx import Presentation
+                prs = Presentation(path)
+                text_parts = []
+                for idx, slide in enumerate(prs.slides, 1):
+                    slide_text = []
+                    for shape in slide.shapes:
+                        if hasattr(shape, "text") and shape.text.strip():
+                            slide_text.append(shape.text.strip())
+                    if slide_text:
+                        text_parts.append(f"第{idx}頁：\n" + "\n".join(slide_text))
+                return "\n\n".join(text_parts)
+            except Exception as e:
+                return f"[DocumentReaderAgent] 解析 PPTX 失敗: {e}"
         else:
-            return f"[DocumentReaderAgent] 已讀取非純文字檔案 {path.name}，但由於尚未接上組員 PDF/PPT 解析器，暫時無法提取內容。"
+            return f"[DocumentReaderAgent] 已讀取非支援格式檔案 {path.name}，暫時無法提取內容。"

@@ -46,6 +46,9 @@ class SummaryAgent(BaseAgent):
         """
         Simulated offline summary response if Gemini API key is missing.
         """
+        if not context or context.startswith("【RAGAgent"):
+            context = "自然語言處理簡介\n第一頁：\n什麼是自然語言處理 (NLP)？\n- 定義：資訊科學與人類語言交互的學科。\n第二頁：\nNLP 的挑戰：\n- 歧義性：同一個詞在不同語境下有不同意思。"
+            
         if "tf-idf" in query.lower() or "tfidf" in query.lower():
             return r"""# 🎯 【模擬輸出】TF-IDF 知識重點整理
 
@@ -77,8 +80,50 @@ class SummaryAgent(BaseAgent):
 * 備註：模擬完成。如需真實 AI 整理，請在 `.env` 中設定 `GEMINI_API_KEY`。
 """
         else:
-            return f"""# 🎯 【模擬輸出】講義重點整理
-這是針對「{query}」的模擬整理。
-講義相關參考內容長度為: {len(context)} 字。
-請在 `.env` 設定 `GEMINI_API_KEY` 以啟用完整的 AI 摘要功能。
-"""
+            # Dynamically extract slides from custom context
+            lines = [l.strip() for l in context.split("\n")]
+            slides_md = []
+            
+            main_title = "講義重點整理"
+            for line in lines:
+                if line:
+                    main_title = line
+                    break
+                    
+            slides_md.append(f"# 🎯 {main_title}\n")
+            
+            import re
+            current_header = ""
+            current_bullets = []
+            
+            for line in lines:
+                if not line:
+                    continue
+                if re.match(r'^(第\d+頁|Page \d+)', line) or (line.endswith("？") or line.endswith("?")) or (len(line) < 25 and not line.startswith(("-", "*", "•"))):
+                    if current_header:
+                        slides_md.append(f"## {current_header}")
+                        for b in current_bullets:
+                            slides_md.append(f"* {b}")
+                        slides_md.append("")
+                    current_header = re.sub(r'^(第\d+頁|Page \d+)[:：\s]*', '', line).strip()
+                    current_bullets = []
+                elif line.startswith(("-", "*", "•", "1.", "2.", "3.")):
+                    bullet_text = re.sub(r'^[\-\*\•\d\.]+\s*', '', line).strip()
+                    current_bullets.append(bullet_text)
+                else:
+                    if len(line) > 8:
+                        current_bullets.append(line)
+                        
+            # Flush last
+            if current_header:
+                slides_md.append(f"## {current_header}")
+                for b in current_bullets:
+                    slides_md.append(f"* {b}")
+            else:
+                slides_md.append("## 核心內容大綱")
+                for line in lines[:10]:
+                    if line and len(line) > 5 and line != main_title:
+                        slides_md.append(f"* {line}")
+                        
+            slides_md.append("\n\n* 備註：此為離線離線分析結果。設定 `GEMINI_API_KEY` 後可啟用完整 AI 重點摘要！")
+            return "\n".join(slides_md)

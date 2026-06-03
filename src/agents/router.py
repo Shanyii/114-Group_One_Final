@@ -66,25 +66,47 @@ class IntentClassifier(BaseAgent):
         """
         text_lower = text.lower()
         
-        # Grading check: e.g. "選 A", "答案是 B", "我選 C"
-        if any(kw in text_lower for kw in ["選", "答案是", "我寫", "我答"]):
-            # Extract possible option letter
-            ans = None
-            for opt in ["A", "B", "C", "D"]:
-                if opt in text.upper():
-                    ans = opt
-                    break
+        # Check if the input is an option selection (e.g. "B", "我選 B", "答案是 A", "選項 C")
+        import re
+        text_clean = text.strip()
+        is_option = False
+        ans = None
+        
+        # 1. Single letter option
+        single_letter = re.search(r'^\s*[\(\[\{【]?\s*([A-Da-d])\s*[\)\]\}】\.\、]?\s*$', text_clean)
+        if single_letter:
+            is_option = True
+            ans = single_letter.group(1).upper()
+        else:
+            # 2. Check with selection keywords
+            pattern_after = re.search(
+                r'(?:選|答案是|寫|答|選擇|選項為|應該是|答案|是|為)\s*[:：\-—、\s,\"\'「『\(（]?\s*([A-Da-d])\s*[:：\-—、\s,\"\'」』\)）]?', 
+                text_clean
+            )
+            if pattern_after:
+                is_option = True
+                ans = pattern_after.group(1).upper()
+            else:
+                pattern_before = re.search(
+                    r'[\"\'「『\(（]?\s*([A-Da-d])\s*[\"\'」』\)）]?\s*(?:選項|是答案|對|才對|比較對|這選項)',
+                    text_clean
+                )
+                if pattern_before:
+                    is_option = True
+                    ans = pattern_before.group(1).upper()
+
+        if is_option:
             return {
                 "intent": "GRADING",
-                "confidence": 0.90,
+                "confidence": 0.95,
                 "parameters": {
                     "topic": None,
                     "count": None,
-                    "question_id": 1, # default mock
+                    "question_id": None,
                     "student_answer": ans or text,
                     "exam_date": None
                 },
-                "explanation": "匹配到答題關鍵字（選/答案），判定為提交測驗答案。"
+                "explanation": "輸入符合選擇題答案選項格式，判定為提交測驗答案。"
             }
             
         # Quiz check: e.g. "出題", "測驗", "練習", "出 2 題"
