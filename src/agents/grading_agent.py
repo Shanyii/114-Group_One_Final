@@ -1,7 +1,10 @@
+from __future__ import annotations
 import json
 from pydantic import BaseModel, Field
 from google.genai import types
 from .base import BaseAgent
+
+from typing import Optional
 
 # Pydantic schemas for structured JSON output
 class GradingResult(BaseModel):
@@ -9,8 +12,8 @@ class GradingResult(BaseModel):
     student_answer_raw: str = Field(description="學生的原始作答輸入")
     correct_answer: str = Field(description="本題的正確答案選項（A, B, C 或 D）")
     grading_feedback: str = Field(description="給學生的繁體中文評語、解析與盲點說明")
-    concept_weakness: str | None = Field(None, description="若答錯，精確指出該題的概念弱點，如 'IDF定義'，若答對填 null")
-    severity: str | None = Field(None, description="評估此盲點的嚴重程度: 'low' | 'medium' | 'high'，答對填 null")
+    concept_weakness: Optional[str] = Field(None, description="若答錯，精確指出該題的概念弱點，如 'IDF定義'，若答對填 null")
+    severity: Optional[str] = Field(None, description="評估此盲點的嚴重程度: 'low' | 'medium' | 'high'，答對填 null")
 
 class GradingAgent(BaseAgent):
     """

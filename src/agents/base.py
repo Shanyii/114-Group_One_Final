@@ -7,7 +7,10 @@ from google import genai
 # Load environment variables from .env file
 # Walk up directory tree to find .env file
 root_dir = Path(__file__).resolve().parent.parent.parent
-load_dotenv(dotenv_path=root_dir / ".env")
+env_path = root_dir / ".env"
+if not env_path.exists():
+    env_path = root_dir / "backend" / ".env"
+load_dotenv(dotenv_path=env_path)
 
 class BaseAgent:
     """

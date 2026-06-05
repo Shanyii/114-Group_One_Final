@@ -42,7 +42,7 @@ class RAGRetriever:
     async def retrieve(
         self,
         instruction: str,
-        document_id: str,
+        document_id: str | None = None,
         top_k: int | None = None,
     ) -> list[dict]:
         """

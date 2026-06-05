@@ -1,14 +1,16 @@
+from __future__ import annotations
 import json
+from typing import Optional
 from pydantic import BaseModel, Field
 from google.genai import types
 from .base import BaseAgent
 
 class RouterParameters(BaseModel):
-    topic: str | None = Field(None, description="意圖涉及的主題名稱（例如: 'TF-IDF'）")
-    count: int | None = Field(None, description="要求產生的題數或章節數")
-    question_id: int | None = Field(None, description="作答題目的 ID")
-    student_answer: str | None = Field(None, description="學生的答案內容")
-    exam_date: str | None = Field(None, description="預定的考試日期")
+    topic: Optional[str] = Field(None, description="意圖涉及的主題名稱（例如: 'TF-IDF'）")
+    count: Optional[int] = Field(None, description="要求產生的題數或章節數")
+    question_id: Optional[int] = Field(None, description="作答題目的 ID")
+    student_answer: Optional[str] = Field(None, description="學生的答案內容")
+    exam_date: Optional[str] = Field(None, description="預定的考試日期")
 
 class RouterResult(BaseModel):
     intent: str = Field(description="分類結果，必須是 'SUMMARY' | 'QUIZ' | 'GRADING' | 'QA' | 'STUDY_PLAN' 之一")

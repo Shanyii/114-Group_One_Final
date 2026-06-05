@@ -1,11 +1,19 @@
+from __future__ import annotations
 import os
 import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Ensure the project root is in the python path
+# Ensure the project root and backend are in the python path
 project_root = Path(__file__).resolve().parent.parent
 sys.path.append(str(project_root))
+sys.path.append(str(project_root / "backend"))
+
+# Load environment variables early so import modules can access settings correctly
+env_path = project_root / ".env"
+if not env_path.exists():
+    env_path = project_root / "backend" / ".env"
+load_dotenv(dotenv_path=env_path)
 
 from src.agents.router import IntentClassifier
 import src.tools as tools
@@ -278,7 +286,8 @@ class StudyAgentSystem:
 
 def main():
     # 載入 .env
-    load_dotenv()
+    # 已在檔案頂部載入對應路徑之 .env，此處僅保留相容性
+    pass
     
     # 建立系統
     system = StudyAgentSystem()
