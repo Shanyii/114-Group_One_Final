@@ -36,6 +36,21 @@
                     </svg>
                     上傳新講義
                 </button>
+                <div class="user-section" id="user-section" style="margin-left: 10px;">
+                    <div id="auth-logged-out">
+                        <button id="btn-login-trigger" class="btn btn-secondary">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 4px;">
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="12" cy="7" r="4"></circle>
+                            </svg>
+                            登入 / 註冊
+                        </button>
+                    </div>
+                    <div id="auth-logged-in" style="display: none; align-items: center; gap: 8px;">
+                        <span id="user-display" class="user-display" style="font-size: 0.9rem; color: var(--text-secondary);">👤 載入中...</span>
+                        <button id="btn-logout" class="btn btn-text" style="color: #ff5252; background: none; border: none; cursor: pointer; font-size: 0.9rem; font-weight: 500; padding: 0 4px;">登出</button>
+                    </div>
+                </div>
             </div>
         </header>
 
@@ -302,6 +317,43 @@
         <footer>
             <p>&copy; 2026 StudyAgent AI. 期末專題分工項目：使用者介面設計、使用流程 (UX)、Agent 流程展示、測驗頁與結果呈現。</p>
         </footer>
+    </div>
+
+    <!-- 登入 / 註冊 Modal -->
+    <div id="auth-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h3 id="auth-modal-title">會員登入</h3>
+                <button id="btn-close-auth-modal" class="modal-close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- 錯誤訊息提示區 -->
+                <div id="auth-error-msg" class="auth-error" style="display: none;"></div>
+                
+                <form id="auth-form">
+                    <div class="form-group">
+                        <label for="auth-username">使用者帳號</label>
+                        <input type="text" id="auth-username" required placeholder="請輸入帳號 (至少 3 個字元)" autocomplete="username">
+                    </div>
+                    <div class="form-group">
+                        <label for="auth-password">密碼</label>
+                        <input type="password" id="auth-password" required placeholder="請輸入密碼 (至少 6 個字元)" autocomplete="current-password">
+                    </div>
+                    
+                    <!-- 註冊專用欄位 (預設隱藏) -->
+                    <div class="form-group register-only" style="display: none;">
+                        <label for="auth-student-name">姓名 (選填)</label>
+                        <input type="text" id="auth-student-name" placeholder="請輸入您的姓名">
+                    </div>
+                    
+                    <button type="submit" id="btn-auth-submit" class="btn btn-primary" style="width: 100%; margin-top: 1.5rem; padding: 0.8rem; border-radius: 8px;">登入</button>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <span id="auth-switch-text">還沒有帳號嗎？</span>
+                <a href="#" id="auth-switch-link">立即註冊</a>
+            </div>
+        </div>
     </div>
 
     <script src="app.js"></script>

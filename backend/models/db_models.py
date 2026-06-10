@@ -19,6 +19,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     create_engine,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 import aiosqlite
@@ -41,6 +42,8 @@ class Student(Base):
     __tablename__ = "students"
 
     student_id = Column(String(36), primary_key=True, comment="UUID，由前端生成")
+    username = Column(String(50), unique=True, nullable=True, comment="帳號")
+    password_hash = Column(String(100), nullable=True, comment="雜湊密碼")
     student_name = Column(String(100), nullable=True, comment="學生姓名（選填）")
     current_subject = Column(String(200), nullable=True, comment="目前科目")
     # JSON 欄位：{ "TF-IDF": 2, "PCFG 機率計算": 3 }
@@ -245,11 +248,24 @@ class GeneratedQuiz(Base):
 
 def create_tables(database_url: str) -> None:
     """
-    同步建立所有資料表（供啟動時呼叫）。
+    同步建立所有資料表（供啟動時呼叫），若欄位不存在則進行動態升級。
 
     Args:
         database_url: SQLite 資料庫路徑，如 './learning.db'
     """
     engine = create_engine(f"sqlite:///{database_url}", echo=False)
     Base.metadata.create_all(engine)
+    
+    # 動態檢查並升級欄位
+    from sqlalchemy import inspect
+    inspector = inspect(engine)
+    columns = [col["name"] for col in inspector.get_columns("students")]
+    
+    with engine.begin() as conn:
+        if "username" not in columns:
+            conn.execute(text("ALTER TABLE students ADD COLUMN username VARCHAR(50)"))
+            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_students_username ON students (username)"))
+        if "password_hash" not in columns:
+            conn.execute(text("ALTER TABLE students ADD COLUMN password_hash VARCHAR(100)"))
+            
     engine.dispose()

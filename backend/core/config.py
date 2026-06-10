@@ -35,6 +35,9 @@ def _find_env_file() -> str:
 class Settings(BaseSettings):
     """系統全域設定，對應 .env.example 中所有鍵值。"""
 
+    # ── 系統金鑰設定 ──────────────────────────────────────────────────────
+    secret_key: str = Field("studyagent_secure_secret_key_2026", description="JWT/Session 簽章私鑰")
+
     # ── LLM 設定（ADR Q1：Gemini 開發 / GPT-4o Demo）────────────────────
     gemini_api_key: str = Field(..., description="Google Gemini API 金鑰")
     openai_api_key: str = Field("", description="OpenAI API 金鑰（Demo 用）")

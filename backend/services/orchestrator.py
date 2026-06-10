@@ -233,12 +233,14 @@ class Orchestrator:
             query = context.get("instruction", "")
             return await self.rag_retriever.retrieve(query, document_id)
         elif step_num == 3:
-            passages = self._get_passages_with_fallback(context)
-            return await self.summarizer.summarize(passages, provider=llm_provider)
+            raw_text = context.get("read_document", "")
+            doc_text = raw_text[:15000] if raw_text else "無講義內容"
+            return await self.summarizer.summarize_text(doc_text, topic=context.get("topic", ""), provider=llm_provider)
         elif step_num == 4:
-            passages = self._get_passages_with_fallback(context)
+            raw_text = context.get("read_document", "")
+            doc_text = raw_text[:15000] if raw_text else "無講義內容"
             topic = context.get("topic", "講義內容")
-            return await self.quiz_generator.generate(passages, topic, provider=llm_provider)
+            return await self.quiz_generator.generate_text(doc_text, topic, provider=llm_provider)
         elif step_num == 7:
             state = await self.state_repo.get_or_create(student_id)
             from tools.plan_generator import PlanGenerator

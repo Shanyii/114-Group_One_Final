@@ -195,11 +195,17 @@ class QuizQuestion(BaseModel):
     question_type: Literal["multiple_choice", "true_false", "definition"] = "multiple_choice"
 
 
+class GlossaryItem(BaseModel):
+    """核心詞彙閃卡項目。"""
+    term: str = Field(..., description="名詞名稱")
+    definition: str = Field(..., alias="def", description="定義")
+
 class SummaryResult(BaseModel):
     """重點摘要結果。"""
     topic: str
     summary: str
     key_points: list[str] = Field(default_factory=list, description="條列式重點")
+    glossary: list[GlossaryItem] = Field(default_factory=list, description="核心詞彙閃卡清單")
 
 
 class StudyPlan(BaseModel):
