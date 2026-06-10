@@ -554,12 +554,11 @@ async function processUploadedFile(file) {
         const res = await fetch(`${API_BASE}/upload`, { method: 'POST', body: formData });
         const json = await res.json();
 
-        if (res.ok && json.status === 'success' && json.data?.document_id) {
+        if (json.status === 'success' && json.data?.document_id) {
             state.documentId = json.data.document_id;
             els.customText.value = `[已載入檔案] 名稱：${file.name}\n大小：${(file.size / 1024).toFixed(1)} KB\n文件 ID：${state.documentId}\n\n✅ 上傳成功！請點擊下方「啟動 AI Agent 分析」按鈕開始。`;
         } else {
-            const errMsg = json.detail || json.error?.message || json.message || '上傳失敗';
-            throw new Error(errMsg);
+            throw new Error(json.error?.message || '上傳失敗');
         }
     } catch (err) {
         console.error('上傳失敗:', err);
