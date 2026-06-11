@@ -52,14 +52,14 @@ INTENT_STEPS: dict[IntentType, list[int]] = {
 }
 
 STEP_NAMES = {
-    1: ("read_document",         "[Step 1] 讀取並解析講義"),
-    2: ("retrieve_content",      "[Step 2] RAG 查詢相關段落"),
-    3: ("generate_summary",      "[Step 3] 生成重點摘要"),
-    4: ("generate_quiz",         "[Step 4] 生成測驗題目"),
-    5: ("grade_answer",          "[Step 5] 批改學生答案"),
-    6: ("update_learning_state", "[Step 6] 更新學習記憶"),
-    7: ("generate_study_plan",   "[Step 7] 生成個人化複習計畫"),
-    8: ("save_log",              "[Step 8] 儲存任務紀錄"),
+    1: ("read_document",         "[Parser Agent] 啟動 DocumentParser -> 讀取並解析講義"),
+    2: ("retrieve_content",      "[RAG Agent] 啟動 RAGRetriever -> 檢索相關語意段落"),
+    3: ("generate_summary",      "[Summary Agent] 啟動 Summarizer -> 濃縮並生成多層次重點大綱"),
+    4: ("generate_quiz",         "[Quiz Agent] 啟動 QuizGenerator -> 設計觀念測驗題目"),
+    5: ("grade_answer",          "[Grader Agent] 啟動 Grader -> 進行學生答案批改與解析"),
+    6: ("update_learning_state", "[Memory Agent] 啟動 StateRepository -> 更新學習記憶"),
+    7: ("generate_study_plan",   "[Plan Agent] 啟動 PlanGenerator -> 規劃個人化複習計畫"),
+    8: ("save_log",              "[System Agent] 啟動 LogRepository -> 儲存雙層技術日誌"),
 }
 
 
@@ -117,7 +117,7 @@ class Orchestrator:
 
             await self.log_repo.append_workflow_step(
                 task_id, 0, "intent_classify",
-                f"[分析] 判斷任務類型：{intent}", "success"
+                f"[Intent Agent] 啟動 IntentAgent -> 判斷使用者任務意圖為：{intent}", "success"
             )
 
             steps = INTENT_STEPS.get(intent, [1, 2, 3, 8])

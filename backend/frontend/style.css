@@ -699,6 +699,38 @@ header {
     margin-bottom: 1rem;
 }
 
+.summary-markdown-body {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    line-height: 1.6;
+    margin-bottom: 1rem;
+}
+
+.summary-markdown-body p {
+    margin-bottom: 0.75rem;
+}
+
+.summary-markdown-body p:last-child {
+    margin-bottom: 0;
+}
+
+.summary-markdown-body h1, .summary-markdown-body h2, .summary-markdown-body h3 {
+    color: var(--text-primary);
+    margin-top: 1.25rem;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+}
+
+.summary-markdown-body h3 {
+    font-size: 1.1rem;
+}
+
+.summary-markdown-body strong {
+    color: var(--primary);
+    font-weight: 600;
+}
+
+
 .slide-summary-card ul {
     padding-left: 1.25rem;
     color: var(--text-secondary);

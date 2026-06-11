@@ -869,6 +869,27 @@ function startMockAnalysis() {
     setTimeout(printNextLog, 200);
 }
 
+// ── Markdown 簡易解析器 ──────────────────────────────────────────────────────
+function parseMarkdown(text) {
+    if (!text) return "";
+    let html = text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+    html = html.replace(/\*(.*?)\*/g, "<em>$1</em>");
+    html = html.replace(/^### (.*?)$/gm, "<h3>$1</h3>");
+    html = html.replace(/^## (.*?)$/gm, "<h2>$1</h2>");
+    html = html.replace(/^# (.*?)$/gm, "<h1>$1</h1>");
+    const paragraphs = html.split(/\n\n+/);
+    return paragraphs.map(p => {
+        if (p.trim().startsWith('<h')) {
+            return p.trim();
+        }
+        return `<p>${p.trim().replace(/\n/g, "<br>")}</p>`;
+    }).join("");
+}
+
 // ── 用後端真實結果建立 Dashboard ──────────────────────────────────────────
 function buildDashboardFromBackend(result) {
     // 解析後端回傳的 summary
@@ -903,7 +924,7 @@ function buildDashboardFromBackend(result) {
         card.innerHTML = `
             <div class="slide-num-badge">${s.slideNum}</div>
             <h3>${s.title}</h3>
-            <p>${s.desc}</p>
+            <div class="summary-markdown-body">${parseMarkdown(s.desc)}</div>
             <ul>${bulletsHtml}</ul>
         `;
         els.summaryMainList.appendChild(card);
@@ -1006,7 +1027,7 @@ function buildDashboardData() {
         card.innerHTML = `
             <div class="slide-num-badge">${s.slideNum}</div>
             <h3>${s.title}</h3>
-            <p>${s.desc}</p>
+            <div class="summary-markdown-body">${parseMarkdown(s.desc)}</div>
             <ul>${bulletsHtml}</ul>
         `;
         els.summaryMainList.appendChild(card);
