@@ -213,7 +213,23 @@ class LLMClient:
 
     def _complete_mock(self, prompt: str) -> str:
         """回傳測試用的假資料，不用呼叫真實 API"""
-        if "題" in prompt or "question" in prompt.lower():
+        if "glossary" in prompt or "摘要" in prompt:
+            return json.dumps({
+                "summary": "這份講義涵蓋了課程的核心概念與實作步驟（Mock 模式展示用）。",
+                "key_points": [
+                    "• 重點一：這是 Mock 模式的模擬重點",
+                    "• 重點二：實際使用時會由 Gemini AI 生成真實摘要",
+                    "• 重點三：系統架構採用 FastAPI + ChromaDB + Gemini",
+                    "• 重點四：支援 PDF 與 PPTX 講義格式",
+                    "• 重點五：整合 RAG 向量語意檢索技術"
+                ],
+                "glossary": [
+                    {"term": "梯度下降 (Gradient Descent)", "def": "沿著損失函數斜率最陡的相反方向更新參數，以尋找全局或局部最小值的最佳化演算法。"},
+                    {"term": "過擬合 (Overfitting)", "def": "模型過度擬合訓練資料中的雜訊，導致在新資料（測試集）上的預測能力（泛化能力）下降。"},
+                    {"term": "L2 正規化 (L2 Regularization)", "def": "又稱 Ridge 懲罰項，藉由在 Loss Function 加入權重的平方和，來限制模型複雜度並讓權重平滑縮小。"}
+                ]
+            }, ensure_ascii=False)
+        elif "題" in prompt or "question" in prompt.lower():
             return json.dumps([
                 {
                     "topic": "Mock 測試主題",
@@ -236,6 +252,11 @@ class LLMClient:
                     "• 重點三：系統架構採用 FastAPI + ChromaDB + Gemini",
                     "• 重點四：支援 PDF 與 PPTX 講義格式",
                     "• 重點五：整合 RAG 向量語意檢索技術"
+                ],
+                "glossary": [
+                    {"term": "梯度下降 (Gradient Descent)", "def": "沿著損失函數斜率最陡的相反方向更新參數，以尋找全局或局部最小值的最佳化演算法。"},
+                    {"term": "過擬合 (Overfitting)", "def": "模型過度擬合訓練資料中的雜訊，導致在新資料（測試集）上的預測能力（泛化能力）下降。"},
+                    {"term": "L2 正規化 (L2 Regularization)", "def": "又稱 Ridge 懲罰項，藉由在 Loss Function 加入權重的平方和，來限制模型複雜度並讓權重平滑縮小。"}
                 ]
             }, ensure_ascii=False)
 
