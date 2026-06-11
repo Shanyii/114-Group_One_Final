@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 from core.config import get_settings
 from models.db_models import create_tables
-from routers import upload, task, grade, student, log
+from routers import upload, task, grade, student, log, auth
 
 # ── 日誌設定 ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -84,6 +84,7 @@ app.add_middleware(
 # ── API 路由掛載 ───────────────────────────────────────────────────────────────
 API_PREFIX = "/api"
 
+app.include_router(auth.router,    prefix=API_PREFIX, tags=["Auth"])
 app.include_router(upload.router,  prefix=API_PREFIX, tags=["Upload"])
 app.include_router(task.router,    prefix=API_PREFIX, tags=["Task"])
 app.include_router(grade.router,   prefix=API_PREFIX, tags=["Grade"])

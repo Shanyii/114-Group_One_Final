@@ -66,21 +66,8 @@ class QuizGenerator:
         provider: str | None = None,
     ) -> list[dict]:
         """
-        根據 RAG 段落生成測驗題目。
-
-        Args:
-            passages: RAG 檢索段落列表
-            topic: 題目主題（如「TF-IDF」）
-            count: 生成題數（預設 3，最多 10）
-            question_type: 題型（'multiple_choice' | 'true_false'）
-            provider: LLM 供應商
-
-        Returns:
-            list[dict]: 題目列表，每題包含：
-                topic, question, options, correct_answer, explanation
+        根據 RAG 段落生成測驗題目（保留供向下相容使用）。
         """
-        count = min(max(count, 1), 10)  # 限制 1–10 題
-
         if not passages:
             logger.warning("[QuizGen] 段落為空，無法出題")
             return []
@@ -88,12 +75,30 @@ class QuizGenerator:
         # 合併相關段落（最多取 3 筆）
         top_passages = sorted(passages, key=lambda p: p["score"], reverse=True)[:3]
         context = "\n\n---\n\n".join(p["text"] for p in top_passages)
+        return await self.generate_text(context, topic, count, question_type, provider)
+
+    async def generate_text(
+        self,
+        text: str,
+        topic: str,
+        count: int = 3,
+        question_type: str = "multiple_choice",
+        provider: str | None = None,
+    ) -> list[dict]:
+        """
+        根據完整文字內容生成測驗題目。
+        """
+        count = min(max(count, 1), 10)  # 限制 1–10 題
+
+        if not text:
+            logger.warning("[QuizGen] 文字內容為空，無法出題")
+            return []
 
         type_label = "選擇題（四選一）" if question_type == "multiple_choice" else "是非題"
         prompt = QUIZ_PROMPT.format(
             count=count,
             question_type_label=type_label,
-            context=context,
+            context=text,
             topic=topic,
         )
 
@@ -110,10 +115,10 @@ class QuizGenerator:
             for q in questions:
                 q.setdefault("topic", topic)
                 q.setdefault("question_type", question_type)
-            logger.info("[QuizGen] 生成 %d 題（主題：%s）", len(questions), topic)
+            logger.info("[QuizGen] 完整文字出題生成 %d 題（主題：%s）", len(questions), topic)
             return questions
         except Exception as exc:
-            logger.error("[QuizGen] 題目生成失敗：%s", exc)
+            logger.error("[QuizGen] 完整文字出題生成失敗：%s", exc)
             return []
 
     def _parse_questions(self, raw: str) -> list[dict]:

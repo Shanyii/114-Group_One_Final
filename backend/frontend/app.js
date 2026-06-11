@@ -361,16 +361,18 @@ const COURSE_PRESETS = {
 // ── 後端 API 設定 ──────────────────────────────────────────────────────────
 const API_BASE = '/api';
 
-// 持久化 student_id（ADR Q4：前端 crypto.randomUUID）
-function getStudentId() {
-    let id = localStorage.getItem('studyagent_student_id');
+// 持久化 guest_student_id (僅用於訪客模式，與會員登入狀態隔離)
+function getGuestStudentId() {
+    let id = localStorage.getItem('studyagent_guest_student_id');
     if (!id) {
         id = crypto.randomUUID();
-        localStorage.setItem('studyagent_student_id', id);
+        localStorage.setItem('studyagent_guest_student_id', id);
     }
     return id;
 }
-const STUDENT_ID = getStudentId();
+let STUDENT_ID = getGuestStudentId();
+let AUTH_TOKEN = ''; // 預設為登出狀態，重新整理即登出
+let CURRENT_USER = ''; // 預設為登出狀態，確保隱私安全
 
 // 上傳的檔案暫存
 let uploadedFile = null;
@@ -449,7 +451,26 @@ function initElements() {
         roadmapTimeline: document.getElementById('roadmap-timeline'),
         reviewQuestionsList: document.getElementById('review-questions-list'),
         btnRetryQuiz: document.getElementById('btn-retry-quiz'),
-        btnReviewStudy: document.getElementById('btn-review-study')
+        btnReviewStudy: document.getElementById('btn-review-study'),
+
+        // Auth Elements
+        authModal: document.getElementById('auth-modal'),
+        btnLoginTrigger: document.getElementById('btn-login-trigger'),
+        btnCloseAuthModal: document.getElementById('btn-close-auth-modal'),
+        btnAuthSubmit: document.getElementById('btn-auth-submit'),
+        authForm: document.getElementById('auth-form'),
+        authUsername: document.getElementById('auth-username'),
+        authPassword: document.getElementById('auth-password'),
+        authStudentName: document.getElementById('auth-student-name'),
+        authErrorMsg: document.getElementById('auth-error-msg'),
+        authSwitchLink: document.getElementById('auth-switch-link'),
+        authSwitchText: document.getElementById('auth-switch-text'),
+        authModalTitle: document.getElementById('auth-modal-title'),
+        userSection: document.getElementById('user-section'),
+        authLoggedOut: document.getElementById('auth-logged-out'),
+        authLoggedIn: document.getElementById('auth-logged-in'),
+        userDisplay: document.getElementById('user-display'),
+        btnLogout: document.getElementById('btn-logout')
     };
 }
 
@@ -514,6 +535,29 @@ function setupEventListeners() {
     // 全域重置與匯出報告
     els.btnReset.addEventListener('click', resetToUpload);
     els.btnExport.addEventListener('click', exportReviewReport);
+
+    // 會員登入 / 註冊相關事件
+    if (els.btnLoginTrigger) {
+        els.btnLoginTrigger.addEventListener('click', () => openAuthModal());
+    }
+    if (els.btnCloseAuthModal) {
+        els.btnCloseAuthModal.addEventListener('click', () => closeAuthModal());
+    }
+    if (els.authSwitchLink) {
+        els.authSwitchLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            switchAuthMode();
+        });
+    }
+    if (els.authForm) {
+        els.authForm.addEventListener('submit', handleAuthSubmit);
+    }
+    if (els.btnLogout) {
+        els.btnLogout.addEventListener('click', handleLogout);
+    }
+    
+    // 初始化會員狀態顯示
+    updateAuthUI();
 }
 
 // 選擇內建範例
@@ -551,7 +595,11 @@ async function processUploadedFile(file) {
         formData.append('file', file);
         formData.append('student_id', STUDENT_ID);
 
-        const res = await fetch(`${API_BASE}/upload`, { method: 'POST', body: formData });
+        const headers = {};
+        if (AUTH_TOKEN) {
+            headers['Authorization'] = `Bearer ${AUTH_TOKEN}`;
+        }
+        const res = await fetch(`${API_BASE}/upload`, { method: 'POST', body: formData, headers });
         const json = await res.json();
 
         if (json.status === 'success' && json.data?.document_id) {
@@ -659,9 +707,13 @@ async function startBackendAnalysis() {
 
     try {
         // Step 1: 建立任務
+        const headers = { 'Content-Type': 'application/json' };
+        if (AUTH_TOKEN) {
+            headers['Authorization'] = `Bearer ${AUTH_TOKEN}`;
+        }
         const taskRes = await fetch(`${API_BASE}/task`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: headers,
             body: JSON.stringify({
                 student_id: STUDENT_ID,
                 document_id: state.documentId,
@@ -730,16 +782,20 @@ async function startBackendAnalysis() {
 
 // 輪詢任務狀態直到完成
 async function pollTaskUntilDone(taskId, maxRetries = 60) {
+    const headers = {};
+    if (AUTH_TOKEN) {
+        headers['Authorization'] = `Bearer ${AUTH_TOKEN}`;
+    }
     for (let i = 0; i < maxRetries; i++) {
         await new Promise(r => setTimeout(r, 2000));
         try {
-            const res = await fetch(`${API_BASE}/task/${taskId}`);
+            const res = await fetch(`${API_BASE}/task/${taskId}`, { headers });
             const json = await res.json();
             const status = json.data?.status;
 
             if (status === 'completed') {
                 // 取得完整結果
-                const resultRes = await fetch(`${API_BASE}/task/${taskId}/result`);
+                const resultRes = await fetch(`${API_BASE}/task/${taskId}/result`, { headers });
                 const resultJson = await resultRes.json();
                 return resultJson.data || null;
             } else if (status === 'failed') {
@@ -813,6 +869,27 @@ function startMockAnalysis() {
     setTimeout(printNextLog, 200);
 }
 
+// ── Markdown 簡易解析器 ──────────────────────────────────────────────────────
+function parseMarkdown(text) {
+    if (!text) return "";
+    let html = text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+    html = html.replace(/\*(.*?)\*/g, "<em>$1</em>");
+    html = html.replace(/^### (.*?)$/gm, "<h3>$1</h3>");
+    html = html.replace(/^## (.*?)$/gm, "<h2>$1</h2>");
+    html = html.replace(/^# (.*?)$/gm, "<h1>$1</h1>");
+    const paragraphs = html.split(/\n\n+/);
+    return paragraphs.map(p => {
+        if (p.trim().startsWith('<h')) {
+            return p.trim();
+        }
+        return `<p>${p.trim().replace(/\n/g, "<br>")}</p>`;
+    }).join("");
+}
+
 // ── 用後端真實結果建立 Dashboard ──────────────────────────────────────────
 function buildDashboardFromBackend(result) {
     // 解析後端回傳的 summary
@@ -847,32 +924,53 @@ function buildDashboardFromBackend(result) {
         card.innerHTML = `
             <div class="slide-num-badge">${s.slideNum}</div>
             <h3>${s.title}</h3>
-            <p>${s.desc}</p>
+            <div class="summary-markdown-body">${parseMarkdown(s.desc)}</div>
             <ul>${bulletsHtml}</ul>
         `;
         els.summaryMainList.appendChild(card);
     });
 
-    // 渲染閃卡（從 key_points 中提取）
+    // 渲染閃卡（從 glossary 中提取名詞與定義，無詞彙則退回以 key_points 渲染）
     els.flashcardGrid.innerHTML = "";
-    const keyPoints = summaryData.key_points || [];
-    keyPoints.slice(0, 4).forEach((kp, i) => {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'flashcard-wrapper';
-        wrapper.innerHTML = `
-            <div class="flashcard-inner">
-                <div class="flashcard-front">
-                    <h4>重點 ${i + 1}</h4>
-                    <span>💡 點擊翻看詳情</span>
+    const glossary = summaryData.glossary || [];
+    if (glossary.length > 0) {
+        glossary.forEach(g => {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'flashcard-wrapper';
+            wrapper.innerHTML = `
+                <div class="flashcard-inner">
+                    <div class="flashcard-front">
+                        <h4>${g.term}</h4>
+                        <span>💡 點擊翻看 AI 定義</span>
+                    </div>
+                    <div class="flashcard-back">
+                        <p>${g.def}</p>
+                    </div>
                 </div>
-                <div class="flashcard-back">
-                    <p>${kp}</p>
+            `;
+            wrapper.addEventListener('click', () => wrapper.classList.toggle('flipped'));
+            els.flashcardGrid.appendChild(wrapper);
+        });
+    } else {
+        const keyPoints = summaryData.key_points || [];
+        keyPoints.slice(0, 4).forEach((kp, i) => {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'flashcard-wrapper';
+            wrapper.innerHTML = `
+                <div class="flashcard-inner">
+                    <div class="flashcard-front">
+                        <h4>重點 ${i + 1}</h4>
+                        <span>💡 點擊翻看詳情</span>
+                    </div>
+                    <div class="flashcard-back">
+                        <p>${kp}</p>
+                    </div>
                 </div>
-            </div>
-        `;
-        wrapper.addEventListener('click', () => wrapper.classList.toggle('flipped'));
-        els.flashcardGrid.appendChild(wrapper);
-    });
+            `;
+            wrapper.addEventListener('click', () => wrapper.classList.toggle('flipped'));
+            els.flashcardGrid.appendChild(wrapper);
+        });
+    }
 
     // 轉換 quiz 格式並儲存到 state
     state.backendQuiz = quizData.map((q, i) => ({
@@ -929,7 +1027,7 @@ function buildDashboardData() {
         card.innerHTML = `
             <div class="slide-num-badge">${s.slideNum}</div>
             <h3>${s.title}</h3>
-            <p>${s.desc}</p>
+            <div class="summary-markdown-body">${parseMarkdown(s.desc)}</div>
             <ul>${bulletsHtml}</ul>
         `;
         els.summaryMainList.appendChild(card);
@@ -1113,9 +1211,13 @@ async function submitQuiz() {
                 };
             });
 
+            const headers = { 'Content-Type': 'application/json' };
+            if (AUTH_TOKEN) {
+                headers['Authorization'] = `Bearer ${AUTH_TOKEN}`;
+            }
             const res = await fetch(`${API_BASE}/grade`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: headers,
                 body: JSON.stringify({
                     task_id: state.taskId,
                     student_id: STUDENT_ID,
@@ -1246,9 +1348,13 @@ async function generateBackendStudyPlan(weakTopics) {
     `;
 
     try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (AUTH_TOKEN) {
+            headers['Authorization'] = `Bearer ${AUTH_TOKEN}`;
+        }
         const res = await fetch(`${API_BASE}/task`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: headers,
             body: JSON.stringify({
                 student_id: STUDENT_ID,
                 document_id: state.documentId,
@@ -1504,4 +1610,150 @@ function resetToUpload() {
     els.btnSubmitQuiz.disabled = false;
     els.btnSubmitQuiz.innerText = "📤 提交測驗答案";
     switchScreen('upload');
+}
+
+// ── 會員登入註冊輔助功能 ──────────────────────────────────────────────────
+let isRegisterMode = false;
+
+function updateAuthUI() {
+    if (AUTH_TOKEN && CURRENT_USER) {
+        if (els.authLoggedOut) els.authLoggedOut.style.display = 'none';
+        if (els.authLoggedIn) {
+            els.authLoggedIn.style.display = 'flex';
+            els.userDisplay.innerText = `👤 ${CURRENT_USER}`;
+        }
+    } else {
+        if (els.authLoggedOut) els.authLoggedOut.style.display = 'block';
+        if (els.authLoggedIn) els.authLoggedIn.style.display = 'none';
+    }
+}
+
+function openAuthModal() {
+    isRegisterMode = false;
+    resetAuthForm();
+    if (els.authModal) {
+        els.authModal.style.display = 'flex';
+        setTimeout(() => els.authModal.classList.add('active'), 10);
+    }
+}
+
+function closeAuthModal() {
+    if (els.authModal) {
+        els.authModal.classList.remove('active');
+        setTimeout(() => els.authModal.style.display = 'none', 300);
+    }
+}
+
+function resetAuthForm() {
+    if (els.authForm) els.authForm.reset();
+    if (els.authErrorMsg) {
+        els.authErrorMsg.style.display = 'none';
+        els.authErrorMsg.innerText = '';
+    }
+    isRegisterMode = false;
+    updateAuthModalLabels();
+}
+
+function updateAuthModalLabels() {
+    if (isRegisterMode) {
+        if (els.authModalTitle) els.authModalTitle.innerText = '註冊會員';
+        if (els.btnAuthSubmit) els.btnAuthSubmit.innerText = '註冊並登入';
+        if (els.authSwitchText) els.authSwitchText.innerText = '已經有帳號了？';
+        if (els.authSwitchLink) els.authSwitchLink.innerText = '立即登入';
+        document.querySelectorAll('.register-only').forEach(el => el.style.display = 'flex');
+        if (els.authStudentName) els.authStudentName.required = false;
+    } else {
+        if (els.authModalTitle) els.authModalTitle.innerText = '會員登入';
+        if (els.btnAuthSubmit) els.btnAuthSubmit.innerText = '登入';
+        if (els.authSwitchText) els.authSwitchText.innerText = '還沒有帳號嗎？';
+        if (els.authSwitchLink) els.authSwitchLink.innerText = '立即註冊';
+        document.querySelectorAll('.register-only').forEach(el => el.style.display = 'none');
+    }
+}
+
+function switchAuthMode() {
+    isRegisterMode = !isRegisterMode;
+    if (els.authErrorMsg) {
+        els.authErrorMsg.style.display = 'none';
+        els.authErrorMsg.innerText = '';
+    }
+    updateAuthModalLabels();
+}
+
+async function handleAuthSubmit(e) {
+    e.preventDefault();
+    if (els.authErrorMsg) els.authErrorMsg.style.display = 'none';
+    
+    const username = els.authUsername.value.trim();
+    const password = els.authPassword.value;
+    const studentName = isRegisterMode ? els.authStudentName.value.trim() : '';
+    
+    if (username.length < 3) {
+        showAuthError('帳號長度至少需為 3 個字元');
+        return;
+    }
+    if (password.length < 6) {
+        showAuthError('密碼長度至少需為 6 個字元');
+        return;
+    }
+    
+    const url = isRegisterMode ? `${API_BASE}/auth/register` : `${API_BASE}/auth/login`;
+    const body = {
+        username,
+        password
+    };
+    
+    if (isRegisterMode) {
+        body.student_name = studentName || username;
+        // 如果原本是訪客模式，把當前的 STUDENT_ID 傳過去進行綁定升級
+        body.student_id = STUDENT_ID;
+    }
+    
+    try {
+        if (els.btnAuthSubmit) els.btnAuthSubmit.disabled = true;
+        
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const json = await res.json();
+        
+        if (json.status === 'success') {
+            const data = json.data;
+            // 僅儲存在記憶體變數中，不寫入 localStorage，確保重新整理即自動登出
+            AUTH_TOKEN = data.token;
+            CURRENT_USER = data.username;
+            STUDENT_ID = data.student_id;
+            
+            // 登入成功，更新 UI 並關閉彈窗即可，不刷新網頁以保留當前記憶體狀態
+            updateAuthUI();
+            closeAuthModal();
+        } else {
+            showAuthError(json.error?.message || '驗證失敗，請稍後重試');
+        }
+    } catch (err) {
+        console.error('Auth 請求出錯:', err);
+        showAuthError('無法連線至伺服器');
+    } finally {
+        if (els.btnAuthSubmit) els.btnAuthSubmit.disabled = false;
+    }
+}
+
+function showAuthError(msg) {
+    if (els.authErrorMsg) {
+        els.authErrorMsg.innerText = `⚠️ ${msg}`;
+        els.authErrorMsg.style.display = 'flex';
+    }
+}
+
+function handleLogout() {
+    if (confirm('確定要登出嗎？登出後將返回訪客帳號模式。')) {
+        AUTH_TOKEN = '';
+        CURRENT_USER = '';
+        STUDENT_ID = getGuestStudentId();
+        updateAuthUI();
+        // 登出後刷新頁面完全重置狀態與記憶體
+        window.location.reload();
+    }
 }
