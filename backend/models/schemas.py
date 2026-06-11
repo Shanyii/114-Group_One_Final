@@ -86,6 +86,22 @@ class TaskStatusResponse(BaseModel):
 
 # ── 學習狀態相關 Schema ───────────────────────────────────────────────────────
 
+class WeakTopicRequest(BaseModel):
+    """POST /api/student/weakness 請求體。"""
+    student_id: str = Field(..., description="學生 UUID")
+    topic: str = Field(..., description="弱點主題/核心詞彙名稱")
+    count: int = Field(default=1, description="遞增數量（預設 1）")
+
+    @field_validator("student_id")
+    @classmethod
+    def validate_student_id(cls, v: str) -> str:
+        try:
+            uuid.UUID(v)
+        except ValueError:
+            raise ValueError("student_id 必須為合法的 UUID 格式")
+        return v
+
+
 class StudentStateResponse(BaseModel):
     """GET /api/student/{student_id}/state 回應。"""
     student_id: str

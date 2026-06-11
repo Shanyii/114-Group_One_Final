@@ -959,11 +959,34 @@ function buildDashboardFromBackend(result) {
                         <span>💡 點擊翻看 AI 定義</span>
                     </div>
                     <div class="flashcard-back">
-                        <p>${g.def}</p>
+                        <p class="flashcard-def">${g.def}</p>
+                        <div class="flashcard-actions">
+                            <button class="flashcard-btn btn-mastered" title="記住了">👍 記住了</button>
+                            <button class="flashcard-btn btn-review" title="還不熟">👎 還不熟</button>
+                        </div>
                     </div>
                 </div>
             `;
-            wrapper.addEventListener('click', () => wrapper.classList.toggle('flipped'));
+            
+            // 點擊卡片翻轉（但要排除按鈕）
+            wrapper.addEventListener('click', (e) => {
+                if (e.target.closest('.flashcard-btn')) return;
+                wrapper.classList.toggle('flipped');
+            });
+            
+            const btnMastered = wrapper.querySelector('.btn-mastered');
+            const btnReview = wrapper.querySelector('.btn-review');
+            
+            btnMastered.addEventListener('click', (e) => {
+                e.stopPropagation();
+                handleFlashcardFeedback(g.term, 'mastered', wrapper);
+            });
+            
+            btnReview.addEventListener('click', (e) => {
+                e.stopPropagation();
+                handleFlashcardFeedback(g.term, 'review', wrapper);
+            });
+            
             els.flashcardGrid.appendChild(wrapper);
         });
     } else {
@@ -978,11 +1001,35 @@ function buildDashboardFromBackend(result) {
                         <span>💡 點擊翻看詳情</span>
                     </div>
                     <div class="flashcard-back">
-                        <p>${kp}</p>
+                        <p class="flashcard-def">${kp}</p>
+                        <div class="flashcard-actions">
+                            <button class="flashcard-btn btn-mastered" title="記住了">👍 記住了</button>
+                            <button class="flashcard-btn btn-review" title="還不熟">👎 還不熟</button>
+                        </div>
                     </div>
                 </div>
             `;
-            wrapper.addEventListener('click', () => wrapper.classList.toggle('flipped'));
+            
+            // 點擊卡片翻轉（但要排除按鈕）
+            wrapper.addEventListener('click', (e) => {
+                if (e.target.closest('.flashcard-btn')) return;
+                wrapper.classList.toggle('flipped');
+            });
+            
+            const btnMastered = wrapper.querySelector('.btn-mastered');
+            const btnReview = wrapper.querySelector('.btn-review');
+            const term = `重點 ${i + 1}`;
+            
+            btnMastered.addEventListener('click', (e) => {
+                e.stopPropagation();
+                handleFlashcardFeedback(term, 'mastered', wrapper);
+            });
+            
+            btnReview.addEventListener('click', (e) => {
+                e.stopPropagation();
+                handleFlashcardFeedback(term, 'review', wrapper);
+            });
+            
             els.flashcardGrid.appendChild(wrapper);
         });
     }
@@ -1061,14 +1108,32 @@ function buildDashboardData() {
                     <span>💡 點擊翻看 AI 定義</span>
                 </div>
                 <div class="flashcard-back">
-                    <p>${g.def}</p>
+                    <p class="flashcard-def">${g.def}</p>
+                    <div class="flashcard-actions">
+                        <button class="flashcard-btn btn-mastered" title="記住了">👍 記住了</button>
+                        <button class="flashcard-btn btn-review" title="還不熟">👎 還不熟</button>
+                    </div>
                 </div>
             </div>
         `;
         
-        // 點擊事件：翻轉卡片
-        wrapper.addEventListener('click', () => {
+        // 點擊事件：翻轉卡片（但要排除按鈕）
+        wrapper.addEventListener('click', (e) => {
+            if (e.target.closest('.flashcard-btn')) return;
             wrapper.classList.toggle('flipped');
+        });
+        
+        const btnMastered = wrapper.querySelector('.btn-mastered');
+        const btnReview = wrapper.querySelector('.btn-review');
+        
+        btnMastered.addEventListener('click', (e) => {
+            e.stopPropagation();
+            handleFlashcardFeedback(g.term, 'mastered', wrapper);
+        });
+        
+        btnReview.addEventListener('click', (e) => {
+            e.stopPropagation();
+            handleFlashcardFeedback(g.term, 'review', wrapper);
         });
         
         els.flashcardGrid.appendChild(wrapper);
@@ -1891,3 +1956,92 @@ function updateChatMessage(messageId, text, passages = []) {
     
     els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
 }
+
+// ── 詞彙閃卡學習狀態反饋 ────────────────────────────────────────────────────────
+
+// 處理閃卡的反饋 (👍 記住了 / 👎 還不熟)
+async function handleFlashcardFeedback(term, feedbackType, wrapper) {
+    const btnMastered = wrapper.querySelector('.btn-mastered');
+    const btnReview = wrapper.querySelector('.btn-review');
+    const back = wrapper.querySelector('.flashcard-back');
+
+    // 禁用按鈕防止重複點擊
+    if (btnMastered) btnMastered.disabled = true;
+    if (btnReview) btnReview.disabled = true;
+
+    // 清除既有狀態類別
+    back.classList.remove('state-mastered', 'state-review');
+
+    if (feedbackType === 'mastered') {
+        back.classList.add('state-mastered');
+        showNotification(`🎉 已將「${term}」標記為記住了！`);
+    } else if (feedbackType === 'review') {
+        back.classList.add('state-review');
+        
+        if (state.useBackend) {
+            try {
+                const headers = { 'Content-Type': 'application/json' };
+                if (AUTH_TOKEN) {
+                    headers['Authorization'] = `Bearer ${AUTH_TOKEN}`;
+                }
+                const res = await fetch(`${API_BASE}/student/weakness`, {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify({
+                        student_id: STUDENT_ID,
+                        topic: term,
+                        count: 1
+                    })
+                });
+                const json = await res.json();
+                if (json.status === 'success') {
+                    showNotification(`👎 已將「${term}」標記為不熟，將納入複習計畫！`, 'warning');
+                } else {
+                    throw new Error(json.error?.message || '寫入失敗');
+                }
+            } catch (err) {
+                console.error("更新弱點失敗:", err);
+                showNotification(`⚠️ 無法寫入後端弱點記錄，已做本地暫存`, 'error');
+            }
+        } else {
+            showNotification(`👎 已將「${term}」標記為不熟 (模擬模式)！`, 'warning');
+        }
+    }
+}
+
+// 顯示 Toast 提示訊息
+function showNotification(message, type = 'success') {
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.style.position = 'fixed';
+        container.style.bottom = '20px';
+        container.style.right = '20px';
+        container.style.zIndex = '9999';
+        container.style.display = 'flex';
+        container.style.flexDirection = 'column';
+        container.style.gap = '10px';
+        document.body.appendChild(container);
+    }
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.innerText = message;
+    container.appendChild(toast);
+
+    // 觸發動畫
+    setTimeout(() => {
+        toast.classList.add('show');
+    }, 10);
+
+    // 3 秒後淡出並移除
+    setTimeout(() => {
+        toast.classList.remove('show');
+        toast.classList.add('hide');
+        toast.addEventListener('transitionend', () => {
+            toast.remove();
+        });
+    }, 3000);
+}
+

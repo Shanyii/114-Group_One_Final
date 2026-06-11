@@ -7,7 +7,7 @@
 """
 
 from fastapi import APIRouter, status, HTTPException
-from models.schemas import APIResponse, StudentStateResponse
+from models.schemas import APIResponse, StudentStateResponse, WeakTopicRequest
 from repositories.state_repo import StateRepository
 from datetime import datetime
 
@@ -34,3 +34,27 @@ async def get_student_state(student_id: str):
             last_updated=datetime.fromisoformat(state["last_updated"])
         ).model_dump()
     )
+
+@router.post(
+    "/student/weakness",
+    response_model=APIResponse,
+    summary="新增或遞增學生弱點主題",
+    description="當學生點擊詞彙閃卡『還不熟』時，將詞彙名稱作為弱點主題寫入資料庫。",
+)
+async def add_weak_topic(request: WeakTopicRequest):
+    repo = StateRepository()
+    state = await repo.increment_weak_topic(request.student_id, request.topic, request.count)
+    
+    return APIResponse(
+        status="success",
+        data=StudentStateResponse(
+            student_id=state["student_id"],
+            student_name=state.get("student_name"),
+            current_subject=state.get("current_subject"),
+            weak_topics=state.get("weak_topics", {}),
+            completed_chapters=state.get("completed_chapters", []),
+            preferred_quiz_type=state.get("preferred_quiz_type", "multiple_choice"),
+            last_updated=datetime.fromisoformat(state["last_updated"])
+        ).model_dump()
+    )
+

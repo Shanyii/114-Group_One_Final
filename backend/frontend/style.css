@@ -766,7 +766,7 @@ header {
 
 .flashcard-wrapper {
     perspective: 1000px;
-    height: 140px;
+    height: 160px; /* Increased from 140px to fit action buttons comfortably */
     cursor: pointer;
 }
 
@@ -821,13 +821,134 @@ header {
     color: var(--text-primary);
     transform: rotateY(180deg);
     border-color: rgba(168, 85, 247, 0.3);
+    justify-content: space-between; /* Space out the definition and buttons */
+    padding: 1rem 1.25rem 0.75rem 1.25rem;
 }
 
-.flashcard-back p {
+.flashcard-back .flashcard-def {
     font-size: 0.85rem;
     color: var(--text-secondary);
-    line-height: 1.5;
+    line-height: 1.45;
+    margin: 0;
+    text-align: left;
+    overflow-y: auto;
+    max-height: 70px;
+    width: 100%;
 }
+
+.flashcard-actions {
+    display: flex;
+    gap: 0.5rem;
+    width: 100%;
+    margin-top: 0.5rem;
+}
+
+.flashcard-btn {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.35rem 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 0.35rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: var(--transition-smooth);
+}
+
+.flashcard-btn:hover:not(:disabled) {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.flashcard-btn.btn-mastered:hover:not(:disabled) {
+    border-color: rgba(16, 185, 129, 0.4);
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--accent);
+}
+
+.flashcard-btn.btn-review:hover:not(:disabled) {
+    border-color: rgba(239, 68, 68, 0.4);
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--danger);
+}
+
+.flashcard-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Card Feedback States */
+.flashcard-back.state-mastered {
+    border-color: var(--accent) !important;
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(15, 23, 42, 0.8)) !important;
+    box-shadow: 0 0 15px rgba(16, 185, 129, 0.15);
+}
+
+.flashcard-back.state-mastered .btn-mastered {
+    background: var(--accent) !important;
+    color: #0b0f19 !important;
+    border-color: var(--accent) !important;
+    opacity: 1 !important;
+}
+
+.flashcard-back.state-review {
+    border-color: var(--danger) !important;
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(15, 23, 42, 0.8)) !important;
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.15);
+}
+
+.flashcard-back.state-review .btn-review {
+    background: var(--danger) !important;
+    color: #0b0f19 !important;
+    border-color: var(--danger) !important;
+    opacity: 1 !important;
+}
+
+/* Toast Notifications */
+.toast {
+    background: rgba(15, 23, 42, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+    padding: 0.75rem 1.25rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+    font-size: 0.9rem;
+    font-weight: 500;
+    min-width: 250px;
+    max-width: 350px;
+    transform: translateY(20px);
+    opacity: 0;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toast.show {
+    transform: translateY(0);
+    opacity: 1;
+}
+
+.toast.hide {
+    transform: translateY(-20px);
+    opacity: 0;
+}
+
+.toast-success {
+    border-left: 4px solid var(--accent);
+}
+
+.toast-warning {
+    border-left: 4px solid var(--warning);
+}
+
+.toast-error {
+    border-left: 4px solid var(--danger);
+}
+
 
 /* TAB: Quiz Panel (測驗頁) */
 .quiz-wrapper {
