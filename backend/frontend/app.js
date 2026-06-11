@@ -361,18 +361,18 @@ const COURSE_PRESETS = {
 // ── 後端 API 設定 ──────────────────────────────────────────────────────────
 const API_BASE = '/api';
 
-// 持久化 student_id（ADR Q4：前端 crypto.randomUUID）
-function getStudentId() {
-    let id = localStorage.getItem('studyagent_student_id');
+// 持久化 guest_student_id (僅用於訪客模式，與會員登入狀態隔離)
+function getGuestStudentId() {
+    let id = localStorage.getItem('studyagent_guest_student_id');
     if (!id) {
         id = crypto.randomUUID();
-        localStorage.setItem('studyagent_student_id', id);
+        localStorage.setItem('studyagent_guest_student_id', id);
     }
     return id;
 }
-let STUDENT_ID = getStudentId();
-let AUTH_TOKEN = localStorage.getItem('studyagent_token') || '';
-let CURRENT_USER = localStorage.getItem('studyagent_username') || '';
+let STUDENT_ID = getGuestStudentId();
+let AUTH_TOKEN = ''; // 預設為登出狀態，重新整理即登出
+let CURRENT_USER = ''; // 預設為登出狀態，確保隱私安全
 
 // 上傳的檔案暫存
 let uploadedFile = null;
@@ -1700,13 +1700,14 @@ async function handleAuthSubmit(e) {
         
         if (json.status === 'success') {
             const data = json.data;
-            localStorage.setItem('studyagent_token', data.token);
-            localStorage.setItem('studyagent_username', data.username);
-            localStorage.setItem('studyagent_student_id', data.student_id);
+            // 僅儲存在記憶體變數中，不寫入 localStorage，確保重新整理即自動登出
+            AUTH_TOKEN = data.token;
+            CURRENT_USER = data.username;
+            STUDENT_ID = data.student_id;
             
-            // 登入成功，關閉彈窗並刷新頁面以完全重置狀態
+            // 登入成功，更新 UI 並關閉彈窗即可，不刷新網頁以保留當前記憶體狀態
+            updateAuthUI();
             closeAuthModal();
-            window.location.reload();
         } else {
             showAuthError(json.error?.message || '驗證失敗，請稍後重試');
         }
@@ -1727,10 +1728,11 @@ function showAuthError(msg) {
 
 function handleLogout() {
     if (confirm('確定要登出嗎？登出後將返回訪客帳號模式。')) {
-        localStorage.removeItem('studyagent_token');
-        localStorage.removeItem('studyagent_username');
-        // 登出後自動生成新的訪客 UUID
-        localStorage.setItem('studyagent_student_id', crypto.randomUUID());
+        AUTH_TOKEN = '';
+        CURRENT_USER = '';
+        STUDENT_ID = getGuestStudentId();
+        updateAuthUI();
+        // 登出後刷新頁面完全重置狀態與記憶體
         window.location.reload();
     }
 }
