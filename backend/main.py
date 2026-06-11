@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 from core.config import get_settings
 from models.db_models import create_tables
-from routers import upload, task, grade, student, log, auth
+from routers import upload, task, grade, student, log, auth, chat
 
 # ── 日誌設定 ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -90,6 +90,7 @@ app.include_router(task.router,    prefix=API_PREFIX, tags=["Task"])
 app.include_router(grade.router,   prefix=API_PREFIX, tags=["Grade"])
 app.include_router(student.router, prefix=API_PREFIX, tags=["Student"])
 app.include_router(log.router,     prefix=API_PREFIX, tags=["Log"])
+app.include_router(chat.router,    prefix=API_PREFIX, tags=["Chat"])
 
 
 # ── 健康檢查端點 ───────────────────────────────────────────────────────────────

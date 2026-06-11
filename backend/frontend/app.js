@@ -431,6 +431,10 @@ function initElements() {
         tabSummary: document.getElementById('tab-summary'),
         tabQuiz: document.getElementById('tab-quiz'),
         tabResults: document.getElementById('tab-results'),
+        tabChat: document.getElementById('tab-chat'),
+        chatMessages: document.getElementById('chat-messages'),
+        chatInput: document.getElementById('chat-input'),
+        btnSendChat: document.getElementById('btn-send-chat'),
         
         // Summary Tab
         summaryMainList: document.getElementById('summary-main-list'),
@@ -535,6 +539,16 @@ function setupEventListeners() {
     // 全域重置與匯出報告
     els.btnReset.addEventListener('click', resetToUpload);
     els.btnExport.addEventListener('click', exportReviewReport);
+
+    // AI 隨身問答事件監聽
+    if (els.btnSendChat && els.chatInput) {
+        els.btnSendChat.addEventListener('click', sendChatMessage);
+        els.chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendChatMessage();
+            }
+        });
+    }
 
     // 會員登入 / 註冊相關事件
     if (els.btnLoginTrigger) {
@@ -660,7 +674,8 @@ function switchTab(tabName) {
     const tabs = [
         { name: 'summary', el: els.tabSummary },
         { name: 'quiz', el: els.tabQuiz },
-        { name: 'results', el: els.tabResults }
+        { name: 'results', el: els.tabResults },
+        { name: 'chat', el: els.tabChat }
     ];
 
     tabs.forEach(t => {
@@ -1756,4 +1771,123 @@ function handleLogout() {
         // 登出後刷新頁面完全重置狀態與記憶體
         window.location.reload();
     }
+}
+
+// ── 講義 AI 隨身問答 ──────────────────────────────────────────────────────────
+
+// 傳送聊天訊息
+async function sendChatMessage() {
+    const text = els.chatInput.value.trim();
+    if (!text) return;
+
+    // 清空輸入框
+    els.chatInput.value = "";
+
+    // 1. 在畫面上呈現學生訊息
+    appendChatMessage("student", text);
+
+    // 2. 顯示 AI 正在輸入的狀態
+    const loadingMessageId = appendChatMessage("ai", "⚡ AI 正在思考中...");
+
+    try {
+        let answerText = "";
+        let retrievedPassages = [];
+
+        if (state.useBackend) {
+            // 呼叫後端真實 API
+            const headers = { 'Content-Type': 'application/json' };
+            if (AUTH_TOKEN) {
+                headers['Authorization'] = `Bearer ${AUTH_TOKEN}`;
+            }
+            
+            const res = await fetch(`${API_BASE}/chat`, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify({
+                    student_id: STUDENT_ID,
+                    document_id: state.documentId,
+                    message: text
+                })
+            });
+            const json = await res.json();
+            if (json.status !== 'success') throw new Error(json.error?.message || '問答服務異常');
+
+            answerText = json.data.answer;
+            retrievedPassages = json.data.retrieved_passages || [];
+        } else {
+            // 模擬模式 - 根據預設課程回答
+            await new Promise(resolve => setTimeout(resolve, 1500)); // 模擬延遲
+            
+            const courseTitle = COURSE_PRESETS[state.activeCourseId || 1]?.title || '講義';
+            
+            const lowerText = text.toLowerCase();
+            if (lowerText.includes("過擬合") || lowerText.includes("overfitting")) {
+                answerText = `在我們的「${courseTitle}」單元中，過擬合 (Overfitting) 指的是模型對訓練資料學習得「太完美」了，連雜訊都記了下來。這會導致模型在新資料上的泛化能力極差。\n\n建議解決方法：\n1. 增加資料量。\n2. 使用 Regularization (L1/L2)。\n3. 實施 Early Stopping。`;
+            } else if (lowerText.includes("學習率") || lowerText.includes("learning rate")) {
+                answerText = `學習率 (Learning Rate, α) 控制著最佳化演算法更新參數的步長。\n- 若太大：跨步太大，Loss 會震盪、甚至發散。\n- 若太小：步子太小，收斂速度極慢。\n它是決定機器學習能否順利收斂的最關鍵超參數之一。`;
+            } else if (lowerText.includes("bst") || lowerText.includes("走訪") || lowerText.includes("二元")) {
+                answerText = `在「二元搜尋樹 (BST)」中：\n- 中序走訪 (In-order Traversal) 會以『左 -> 根 -> 右』順序拜訪，輸出會是一個「排序好的遞增數列」。\n- 搜尋最壞複雜度為 O(N)（當樹退化成一條直線時）。`;
+            } else {
+                answerText = `【AI 隨身助教 - 範例回覆】\n您詢問了關於『${text}』的問題。目前系統運作於預設範例模式，因此由我為您做通用回答。\n\n如果您上傳了自己的講義 PDF，我們將能透過 RAG（檢索增強生成）在講義中找到最相關的段落，並給您最精準的客製化答覆！`;
+            }
+        }
+
+        // 更新 AI 回覆
+        updateChatMessage(loadingMessageId, answerText, retrievedPassages);
+        
+    } catch (err) {
+        console.error("對話失敗:", err);
+        updateChatMessage(loadingMessageId, `⚠️ 對話連線異常：${err.message}`);
+    }
+}
+
+// 在聊天視窗中附加訊息
+function appendChatMessage(sender, text) {
+    const messageId = "msg_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+    
+    const msgDiv = document.createElement('div');
+    msgDiv.className = `chat-message ${sender}`;
+    msgDiv.id = messageId;
+    
+    msgDiv.innerHTML = `
+        <div class="message-content">${parseMarkdown(text)}</div>
+    `;
+    
+    els.chatMessages.appendChild(msgDiv);
+    els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
+    
+    return messageId;
+}
+
+// 更新已存在的訊息內容
+function updateChatMessage(messageId, text, passages = []) {
+    const msgDiv = document.getElementById(messageId);
+    if (!msgDiv) return;
+    
+    const contentDiv = msgDiv.querySelector('.message-content');
+    if (contentDiv) {
+        contentDiv.innerHTML = parseMarkdown(text);
+    }
+    
+    // 如果有 RAG 參考來源，附加在訊息底部
+    if (passages && passages.length > 0) {
+        const sourceDiv = document.createElement('div');
+        sourceDiv.className = 'message-source';
+        
+        let sourceListHtml = passages.map(p => {
+            const pageInfo = p.page_num !== null && p.page_num !== undefined ? ` (第 ${p.page_num} 頁)` : '';
+            const scorePercent = Math.round(p.score * 100);
+            return `<li class="message-source-item">📄 ${p.text.substring(0, 100)}... <span style="color:var(--text-muted); font-size:0.75rem;">(相關度: ${scorePercent}%${pageInfo})</span></li>`;
+        }).join('');
+        
+        sourceDiv.innerHTML = `
+            <div class="message-source-title">🔍 參考講義來源：</div>
+            <ul class="message-source-list">
+                ${sourceListHtml}
+            </ul>
+        `;
+        msgDiv.appendChild(sourceDiv);
+    }
+    
+    els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
 }

@@ -225,6 +225,56 @@ class StudyRecommendation(BaseModel):
     suggested_actions: list[str]
 
 
+# ── 聊天相關 Schema ───────────────────────────────────────────────────────────
+
+class ChatRequest(BaseModel):
+    """POST /api/chat 請求體。"""
+    student_id: str = Field(
+        ..., description="學生 UUID"
+    )
+    document_id: Optional[str] = Field(
+        None, description="上傳時取得的 document_id，非強制，允許訪客預設模式為 None"
+    )
+    message: str = Field(
+        ..., min_length=1, max_length=2000,
+        description="學生的問題內容"
+    )
+    llm_provider: Optional[Literal["gemini", "openai", "mock"]] = Field(
+        None, description="指定 LLM 供應商（不填則用設定預設值）"
+    )
+
+    @field_validator("student_id")
+    @classmethod
+    def validate_student_id(cls, v: str) -> str:
+        try:
+            uuid.UUID(v)
+        except ValueError:
+            raise ValueError("student_id 必須為合法的 UUID 格式")
+        return v
+
+    @field_validator("document_id")
+    @classmethod
+    def validate_document_id(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        try:
+            uuid.UUID(v)
+        except ValueError:
+            raise ValueError("document_id 必須為合法的 UUID 格式")
+        return v
+
+
+class ChatResponse(BaseModel):
+    """POST /api/chat 回應。"""
+    answer: str = Field(..., description="AI 生成的回答")
+    retrieved_passages: list[dict] = Field(
+        default_factory=list,
+        description="檢索出的講義參考段落列表"
+    )
+
+
 # 解決前向引用
 StudyPlan.model_rebuild()
 APIResponse.model_rebuild()
+ChatResponse.model_rebuild()
+

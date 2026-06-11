@@ -203,6 +203,9 @@
                     <button class="tab-btn" data-tab="quiz">
                         ✍️ 知識評估測驗
                     </button>
+                    <button class="tab-btn" data-tab="chat">
+                        💬 講義 AI 問答
+                    </button>
                 </nav>
 
                 <!-- 頁籤一：重點整理大綱 -->
@@ -253,6 +256,29 @@
                             </button>
                             <button id="btn-submit-quiz" class="btn btn-primary" style="display: none; background: linear-gradient(135deg, var(--accent), #059669);">
                                 📤 提交測驗答案
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 頁籤：講義 AI 隨身問答 -->
+                <div id="tab-chat" class="tab-content">
+                    <div class="chat-container">
+                        <div class="chat-messages" id="chat-messages">
+                            <div class="chat-message system">
+                                <div class="message-content">
+                                    👋 您好！我是您的講義隨身 AI 助教。您可以針對這份講義的任何內容向我提問，例如：「什麼是過擬合？」或「請幫我解釋 BST 刪除節點的 Successor 邏輯」。
+                                </div>
+                            </div>
+                        </div>
+                        <div class="chat-input-area">
+                            <input type="text" id="chat-input" placeholder="請輸入關於講義的問題..." autocomplete="off">
+                            <button id="btn-send-chat" class="btn btn-primary">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;">
+                                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                                </svg>
+                                傳送
                             </button>
                         </div>
                     </div>
