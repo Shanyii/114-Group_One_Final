@@ -127,6 +127,7 @@ ALLOWED_MIME_TYPES = {
     "application/pdf": "pdf",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
     "application/vnd.ms-powerpoint": "pptx",
+    "text/plain": "txt",
 }
 
 MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
@@ -221,7 +222,17 @@ class DocumentParser:
             return self._parse_pdf(file_path)
         elif file_type == "pptx":
             return self._parse_pptx(file_path)
+        elif file_type == "txt":
+            return self._parse_txt(file_path)
         raise ValueError(f"未知的檔案類型：{file_type}")
+
+    def _parse_txt(self, file_path: str) -> str:
+        """讀取純文字檔案。"""
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                return f.read()
+        except Exception as exc:
+            raise ValueError(f"TXT 解析失敗：{exc}") from exc
 
     def _parse_pdf(self, file_path: str) -> str:
         """使用 pdfplumber 提取 PDF 文字（支援中文）。"""

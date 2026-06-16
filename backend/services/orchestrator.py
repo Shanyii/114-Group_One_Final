@@ -174,7 +174,7 @@ class Orchestrator:
                         f"{step_display_base}失敗：{step_exc}", "failed"
                     )
                     # 步驟失敗時停止後續執行
-                    await self._update_task_status(task_id, "failed")
+                    await self._update_task_status(task_id, "failed", f"步驟 {step_num} 失敗：{step_exc}")
                     raise
 
             # ── Step 8：儲存 Dev Log ──────────────────────────────────────────
@@ -213,7 +213,7 @@ class Orchestrator:
 
         except Exception as exc:
             logger.error("[Orchestrator] 任務失敗 task_id=%s：%s", task_id, exc)
-            await self._update_task_status(task_id, "failed")
+            await self._update_task_status(task_id, "failed", f"任務執行異常：{exc}")
 
     # ── 步驟分發器 ────────────────────────────────────────────────────────────
 

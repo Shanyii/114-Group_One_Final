@@ -85,6 +85,7 @@ async def upload_document(
         )
 
     # 建立 ChromaDB 向量索引（背景建立，可選等待）
+    warning_msg = None
     try:
         chunks = await parser.get_chunks(document_id)
         vector_repo = get_vector_repo()
@@ -92,14 +93,88 @@ async def upload_document(
         logger.info("[Router/upload] 向量索引建立完成：doc_id=%s, chunks=%d", document_id, indexed_count)
     except Exception as exc:
         # 索引失敗不阻斷上傳（降級處理）
+        warning_msg = f"RAG 向量索引建立失敗：{exc}"
         logger.error("[Router/upload] 向量索引建立失敗（不影響上傳）：%s", exc)
 
     file_type = file.filename.rsplit(".", 1)[-1].lower() if file.filename else "unknown"
+
+    # 寫入活動紀錄 (upload)
+    import aiosqlite
+    from datetime import datetime
+    from core.config import get_settings
+    
+    try:
+        settings = get_settings()
+        async with aiosqlite.connect(settings.database_url) as db:
+            await db.execute(
+                """
+                INSERT INTO document_logs (student_id, document_id, filename, file_type, action, timestamp)
+                VALUES (?, ?, ?, ?, 'upload', ?)
+                """,
+                (student_id, document_id, file.filename or "unknown", file_type, datetime.utcnow().isoformat())
+            )
+            await db.commit()
+    except Exception as exc:
+        logger.error("[Router/upload] 寫入活動紀錄失敗（不影響上傳）：%s", exc)
+
     return APIResponse(
         status="success",
         data=UploadResponse(
             document_id=document_id,
             filename=file.filename or "unknown",
             file_type=file_type,
+            warning=warning_msg,
         ).model_dump(),
+    )
+
+
+@router.post(
+    "/upload/{document_id}/touch",
+    response_model=APIResponse,
+    summary="更新講義的存取/載入時間",
+)
+async def touch_document(document_id: str, student_id: str = Form(..., description="學生 UUID")):
+    import aiosqlite
+    from datetime import datetime
+    from core.config import get_settings
+    
+    settings = get_settings()
+    db_path = settings.database_url
+    
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT filename, file_type FROM documents WHERE document_id = ? AND student_id = ?",
+            (document_id, student_id)
+        ) as cursor:
+            doc_row = await cursor.fetchone()
+            
+        if doc_row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="找不到指定的講義文件",
+            )
+            
+        doc = dict(doc_row)
+        now_str = datetime.utcnow().isoformat()
+        
+        # 1. 更新 documents 中的時間
+        await db.execute(
+            "UPDATE documents SET uploaded_at = ? WHERE document_id = ? AND student_id = ?",
+            (now_str, document_id, student_id)
+        )
+        
+        # 2. 新增存取日誌 (load)
+        await db.execute(
+            """
+            INSERT INTO document_logs (student_id, document_id, filename, file_type, action, timestamp)
+            VALUES (?, ?, ?, ?, 'load', ?)
+            """,
+            (student_id, document_id, doc["filename"], doc["file_type"], now_str)
+        )
+        await db.commit()
+        
+    return APIResponse(
+        status="success",
+        data={"document_id": document_id, "updated": True}
     )

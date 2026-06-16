@@ -129,6 +129,7 @@ class StateRepository:
     async def increment_weak_topic(self, student_id: str, topic: str, count: int = 1) -> dict:
         """
         遞增指定弱點主題的錯誤計數（答錯 +1）。
+        若遞增或遞減後的數量小於或等於 0，則從弱點中刪除該主題。
 
         Args:
             student_id: 學生 UUID
@@ -140,7 +141,29 @@ class StateRepository:
         """
         state = await self.get_or_create(student_id)
         weak_topics: dict = state.get("weak_topics", {})
-        weak_topics[topic] = weak_topics.get(topic, 0) + count
+        new_count = weak_topics.get(topic, 0) + count
+        if new_count <= 0:
+            if topic in weak_topics:
+                del weak_topics[topic]
+        else:
+            weak_topics[topic] = new_count
+        return await self.upsert(student_id, {"weak_topics": weak_topics})
+
+    async def delete_weak_topic(self, student_id: str, topic: str) -> dict:
+        """
+        刪除學生特定的弱點主題。
+
+        Args:
+            student_id: 學生 UUID
+            topic: 弱點主題名稱
+
+        Returns:
+            dict: 更新後的完整學習狀態
+        """
+        state = await self.get_or_create(student_id)
+        weak_topics: dict = state.get("weak_topics", {})
+        if topic in weak_topics:
+            del weak_topics[topic]
         return await self.upsert(student_id, {"weak_topics": weak_topics})
 
     async def add_completed_chapter(self, student_id: str, chapter: str) -> dict:

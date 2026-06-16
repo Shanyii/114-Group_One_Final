@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>StudyAgent AI - 課堂講義學習與複習規劃系統</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=1.0.1">
 </head>
 <body>
     <div class="app-container">
@@ -113,6 +113,49 @@
                                 <div class="preset-badge">系統觀念</div>
                                 <h4>3. 作業系統 - 行程排程演算法</h4>
                                 <p>重點分析：排程評估指標、FCFS/SJF/RR 規則與 CPU 內文切換</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 學習歷程與歷史紀錄區 -->
+                <div class="panel" id="history-panel" style="margin-top: 2rem;">
+                    <div class="panel-header" style="margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <h2 style="font-size: 1.35rem; color: var(--text-primary); font-family: var(--font-heading); display: flex; align-items: center; gap: 8px; margin: 0;">
+                            <span style="font-size: 1.6rem;">📊</span> 您的個人學習歷程與檔案紀錄
+                        </h2>
+                        <button id="btn-refresh-history" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">
+                            🔄 重新整理歷程
+                        </button>
+                    </div>
+                    
+                    <div class="history-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 2rem;">
+                        <!-- 左側：已上傳的講義檔案與活動歷史 -->
+                        <div class="history-docs-section" style="display: flex; flex-direction: column; gap: 1.5rem;">
+                            <div>
+                                <h3 style="font-size: 1.1rem; color: var(--text-primary); margin-bottom: 0.75rem; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                                    <span>📂</span> 歷史講義檔案庫
+                                </h3>
+                                <div id="history-docs-list" class="history-list" style="max-height: 220px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; padding: 0.75rem; background: rgba(255,255,255,0.02); display: flex; flex-direction: column; gap: 10px;">
+                                    <div style="color: var(--text-muted); text-align: center; padding: 1.5rem;">尚未上傳任何講義</div>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <h3 style="font-size: 1.1rem; color: var(--text-primary); margin-bottom: 0.75rem; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                                    <span>⏱️</span> 講義活動紀錄 (上傳與載入)
+                                </h3>
+                                <div id="history-doc-logs-list" class="history-list" style="max-height: 220px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; padding: 0.75rem; background: rgba(255,255,255,0.02); display: flex; flex-direction: column; gap: 10px;">
+                                    <div style="color: var(--text-muted); text-align: center; padding: 1.5rem;">尚未有任何活動紀錄</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 右側：歷史答題與對錯紀錄 -->
+                        <div class="history-quizzes-section">
+                            <h3 style="font-size: 1.1rem; color: var(--text-primary); margin-bottom: 0.75rem; font-weight: 600;">✍️ 歷史答題對錯紀錄</h3>
+                            <div id="history-quizzes-list" class="history-list" style="max-height: 250px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; padding: 0.75rem; background: rgba(255,255,255,0.02); display: flex; flex-direction: column; gap: 10px;">
+                                <div style="color: var(--text-muted); text-align: center; padding: 1.5rem;">尚未進行任何測驗</div>
                             </div>
                         </div>
                     </div>
@@ -323,6 +366,7 @@
                                     </div>
                                 </div>
 
+
                                 <!-- 錯題與詳解 -->
                                 <div style="margin-top: 1.5rem;">
                                     <h4 style="font-family: var(--font-heading); font-size: 1.25rem; margin-bottom: 1rem; color: var(--text-primary);">
@@ -382,6 +426,6 @@
         </div>
     </div>
 
-    <script src="app.js?v=1.0.1"></script>
+    <script src="app.js?v=1.0.4"></script>
 </body>
 </html>

@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import Field, model_validator
 from functools import lru_cache
 
 
@@ -72,6 +72,22 @@ class Settings(BaseSettings):
     llm_max_retries: int = Field(3, description="LLM API 呼叫最大重試次數")
     llm_retry_wait_min: float = Field(1.0, description="重試最小等待秒數")
     llm_retry_wait_max: float = Field(10.0, description="重試最大等待秒數")
+
+    @model_validator(mode="after")
+    def resolve_paths(self) -> 'Settings':
+        """確保所有相對路徑（SQLite、ChromaDB、Uploads）都解析為相對於 backend/ 目錄的絕對路徑，防範 CWD 變更造成的資料丟失。"""
+        backend_dir = Path(__file__).resolve().parent.parent
+        
+        if self.database_url and not os.path.isabs(self.database_url):
+            self.database_url = str((backend_dir / self.database_url).resolve())
+            
+        if self.chroma_db_dir and not os.path.isabs(self.chroma_db_dir):
+            self.chroma_db_dir = str((backend_dir / self.chroma_db_dir).resolve())
+            
+        if self.upload_dir and not os.path.isabs(self.upload_dir):
+            self.upload_dir = str((backend_dir / self.upload_dir).resolve())
+            
+        return self
 
     model_config = {"env_file": _find_env_file(), "env_file_encoding": "utf-8", "extra": "ignore"}
 

@@ -117,11 +117,20 @@ class LLMClient:
             if self.settings.llm_provider == "mock":
                 return [0.1] * 768
                 
-            result = genai.embed_content(
-                model=self.settings.embedding_model,
-                content=text,
-                task_type="RETRIEVAL_DOCUMENT",
-            )
+            try:
+                result = genai.embed_content(
+                    model=self.settings.embedding_model,
+                    content=text,
+                    task_type="RETRIEVAL_DOCUMENT",
+                    output_dimensionality=768,
+                )
+            except Exception as e:
+                logger.warning("[LLMClient] embed with output_dimensionality failed, retrying without it: %s", e)
+                result = genai.embed_content(
+                    model=self.settings.embedding_model,
+                    content=text,
+                    task_type="RETRIEVAL_DOCUMENT",
+                )
             return result["embedding"]
         except Exception as exc:
             logger.error("[LLMClient] Embedding 失敗：%s", exc)
@@ -141,11 +150,20 @@ class LLMClient:
             if self.settings.llm_provider == "mock":
                 return [0.1] * 768
 
-            result = genai.embed_content(
-                model=self.settings.embedding_model,
-                content=query,
-                task_type="RETRIEVAL_QUERY",
-            )
+            try:
+                result = genai.embed_content(
+                    model=self.settings.embedding_model,
+                    content=query,
+                    task_type="RETRIEVAL_QUERY",
+                    output_dimensionality=768,
+                )
+            except Exception as e:
+                logger.warning("[LLMClient] embed_query with output_dimensionality failed, retrying without it: %s", e)
+                result = genai.embed_content(
+                    model=self.settings.embedding_model,
+                    content=query,
+                    task_type="RETRIEVAL_QUERY",
+                )
             return result["embedding"]
         except Exception as exc:
             logger.error("[LLMClient] Query Embedding 失敗：%s", exc)

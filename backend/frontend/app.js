@@ -373,6 +373,7 @@ function getGuestStudentId() {
 let STUDENT_ID = getGuestStudentId();
 let AUTH_TOKEN = ''; // 預設為登出狀態，重新整理即登出
 let CURRENT_USER = ''; // 預設為登出狀態，確保隱私安全
+let LLM_PROVIDER = 'mock'; // 預設為模擬模式，啟動時向後端查詢
 
 // 上傳的檔案暫存
 let uploadedFile = null;
@@ -392,6 +393,7 @@ let state = {
     taskId: null,
     backendResult: null,     // { summary, quiz, plan } from backend
     useBackend: false,       // 此次分析是否使用後端
+    chatHistory: [],         // 對話歷史紀錄
 };
 
 // 初始化 DOM 事件
@@ -399,6 +401,22 @@ document.addEventListener('DOMContentLoaded', () => {
     initElements();
     setupEventListeners();
     selectPreset(1); // 預設選取第一個講義
+
+    // 檢查後端健康狀態與 LLM 供應商
+    fetch('/health')
+        .then(res => res.json())
+        .then(json => {
+            if (json && json.llm_provider) {
+                LLM_PROVIDER = json.llm_provider;
+                console.log("後端連線成功，LLM 供應商為:", LLM_PROVIDER);
+            }
+        })
+        .catch(err => {
+            console.log("無法連線至後端服務或後端未啟動，將使用模擬模式運行。");
+        });
+
+    // 取得並渲染學習歷程
+    fetchStudentHistory(STUDENT_ID);
 });
 
 // DOM 元素引用
@@ -474,7 +492,13 @@ function initElements() {
         authLoggedOut: document.getElementById('auth-logged-out'),
         authLoggedIn: document.getElementById('auth-logged-in'),
         userDisplay: document.getElementById('user-display'),
-        btnLogout: document.getElementById('btn-logout')
+        btnLogout: document.getElementById('btn-logout'),
+        
+        // History & Plan Editor Elements
+        btnRefreshHistory: document.getElementById('btn-refresh-history'),
+        historyDocsList: document.getElementById('history-docs-list'),
+        historyDocLogsList: document.getElementById('history-doc-logs-list'),
+        historyQuizzesList: document.getElementById('history-quizzes-list'),
     };
 }
 
@@ -569,6 +593,11 @@ function setupEventListeners() {
     if (els.btnLogout) {
         els.btnLogout.addEventListener('click', handleLogout);
     }
+
+    // 學習歷程事件監聽
+    if (els.btnRefreshHistory) {
+        els.btnRefreshHistory.addEventListener('click', () => fetchStudentHistory(STUDENT_ID));
+    }
     
     // 初始化會員狀態顯示
     updateAuthUI();
@@ -618,13 +647,22 @@ async function processUploadedFile(file) {
 
         if (json.status === 'success' && json.data?.document_id) {
             state.documentId = json.data.document_id;
-            els.customText.value = `[已載入檔案] 名稱：${file.name}\n大小：${(file.size / 1024).toFixed(1)} KB\n文件 ID：${state.documentId}\n\n✅ 上傳成功！請點擊下方「啟動 AI Agent 分析」按鈕開始。`;
+            let statusText = `[已載入檔案] 名稱：${file.name}\n大小：${(file.size / 1024).toFixed(1)} KB\n文件 ID：${state.documentId}\n\n✅ 上傳成功！`;
+            if (json.data.warning) {
+                statusText += `\n⚠️ 警告：${json.data.warning}`;
+                showNotification(`⚠️ 上傳成功，但 RAG 索引有問題：${json.data.warning}`, "warning");
+            } else {
+                statusText += `請點擊下方「啟動 AI Agent 分析」按鈕開始。`;
+            }
+            els.customText.value = statusText;
+            fetchStudentHistory(STUDENT_ID);
         } else {
             throw new Error(json.error?.message || '上傳失敗');
         }
     } catch (err) {
         console.error('上傳失敗:', err);
-        els.customText.value = `[已載入檔案] 名稱：${file.name}\n大小：${(file.size / 1024).toFixed(1)} KB\n\n⚠️ 後端上傳失敗（${err.message}），將使用模擬資料展示。`;
+        els.customText.value = `[已載入檔案] 名稱：${file.name}\n大小：${(file.size / 1024).toFixed(1)} KB\n\n❌ 上傳解析失敗：${err.message}`;
+        showNotification(`❌ 上傳失敗：${err.message}`, "error");
         uploadedFile = null;
         state.documentId = null;
     }
@@ -690,6 +728,65 @@ function switchTab(tabName) {
     if (tabName === 'quiz') {
         renderQuizQuestion();
     }
+    
+
+}
+
+// 啟動 Agent 分析流程
+// 嘗試將內建範例或自訂貼上文字上傳至後端以做為正式紀錄並以真實 AI 分析
+async function tryUploadPresetOrCustomText() {
+    if (LLM_PROVIDER === 'mock') return; // mock 模式下直接回傳，不呼叫後端
+    
+    let textToUpload = "";
+    let filenameToUpload = "";
+    
+    if (state.activeCourseId && COURSE_PRESETS[state.activeCourseId]) {
+        const preset = COURSE_PRESETS[state.activeCourseId];
+        filenameToUpload = `範例_${preset.title}.txt`;
+        textToUpload = `主題：${preset.title}\n\n描述：${preset.description}\n\n`;
+        if (preset.summaries) {
+            textToUpload += preset.summaries.map(s => `--- ${s.slideNum} : ${s.title} ---\n${s.desc}\n${s.bullets.map(b => `- ${b}`).join('\n')}`).join('\n\n');
+        }
+    } else {
+        const customVal = els.customText.value.trim();
+        if (customVal && !customVal.startsWith("[已載入檔案]") && !customVal.startsWith("[已載入歷史檔案]")) {
+            textToUpload = customVal;
+            // 取前 15 字元作為檔名
+            const cleanTitle = customVal.substring(0, 15).replace(/[\r\n\t]/g, " ").trim();
+            filenameToUpload = `自訂_${cleanTitle || "貼上文字"}.txt`;
+        }
+    }
+    
+    if (!textToUpload) return;
+    
+    try {
+        const file = new File([textToUpload], filenameToUpload, { type: 'text/plain' });
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('student_id', STUDENT_ID);
+        
+        const headers = {};
+        if (AUTH_TOKEN) {
+            headers['Authorization'] = `Bearer ${AUTH_TOKEN}`;
+        }
+        
+        const res = await fetch(`${API_BASE}/upload`, { method: 'POST', body: formData, headers });
+        const json = await res.json();
+        if (json.status === 'success' && json.data?.document_id) {
+            state.documentId = json.data.document_id;
+            console.log("範例/自訂文字成功上傳至後端做為正式記錄，ID:", state.documentId);
+            if (json.data.warning) {
+                showNotification(`⚠️ RAG 索引有問題：${json.data.warning}`, "warning");
+            }
+            // 重新整理歷史檔案列表
+            fetchStudentHistory(STUDENT_ID);
+        } else {
+            throw new Error(json.error?.message || '上傳失敗');
+        }
+    } catch (err) {
+        console.error("自訂文字背景上傳失敗:", err);
+        showNotification(`❌ 講義背景上傳失敗：${err.message}`, "error");
+    }
 }
 
 // 啟動 Agent 分析流程
@@ -705,6 +802,11 @@ async function startAgentAnalysis() {
         step.classList.remove('active', 'completed');
         if (idx === 0) step.classList.add('active');
     });
+
+    // 如果沒有 documentId，嘗試將範例或自訂貼上文字上傳至後端
+    if (!state.documentId) {
+        await tryUploadPresetOrCustomText();
+    }
 
     // 判斷：有 document_id → 呼叫真實後端；否則用模擬資料
     if (state.documentId) {
@@ -773,24 +875,26 @@ async function startBackendAnalysis() {
         const result = await pollTaskUntilDone(state.taskId);
         evtSource.close();
 
-        if (result) {
+        if (result && result.success) {
             appendTerminalLine("[System] ✅ 所有 Agent 任務已完成！載入結果中...", "success");
-            state.backendResult = result;
-            buildDashboardFromBackend(result);
+            state.backendResult = result.data;
+            buildDashboardFromBackend(result.data);
         } else {
-            throw new Error("任務執行失敗或逾時");
+            const errorMsg = result ? result.error : "任務執行逾時";
+            throw new Error(errorMsg);
         }
     } catch (err) {
         console.error('後端分析失敗:', err);
         appendTerminalLine(`[System] ❌ 後端分析失敗：${err.message}`, "error");
-        appendTerminalLine("[System] 將使用內建範例資料作為展示...", "info");
+        showNotification(`❌ 後端分析失敗：${err.message}`, "error");
         state.useBackend = false;
 
-        // Fallback 到模擬資料
-        await new Promise(r => setTimeout(r, 1500));
-        buildDashboardData();
-        switchScreen('dashboard');
-        switchTab('summary');
+        // Find the currently active step and mark it as failed
+        const activeSteps = document.querySelectorAll('.flow-step.active');
+        activeSteps.forEach(step => {
+            step.classList.remove('active');
+            step.classList.add('failed');
+        });
     }
     state.isProcessing = false;
 }
@@ -812,15 +916,15 @@ async function pollTaskUntilDone(taskId, maxRetries = 60) {
                 // 取得完整結果
                 const resultRes = await fetch(`${API_BASE}/task/${taskId}/result`, { headers });
                 const resultJson = await resultRes.json();
-                return resultJson.data || null;
+                return { success: true, data: resultJson.data };
             } else if (status === 'failed') {
-                return null;
+                return { success: false, error: json.data?.result_summary || '任務執行失敗' };
             }
         } catch (e) {
             console.warn('輪詢失敗:', e);
         }
     }
-    return null;
+    return { success: false, error: "任務執行逾時" };
 }
 
 // Terminal 輸出 helper
@@ -896,12 +1000,48 @@ function parseMarkdown(text) {
     html = html.replace(/^### (.*?)$/gm, "<h3>$1</h3>");
     html = html.replace(/^## (.*?)$/gm, "<h2>$1</h2>");
     html = html.replace(/^# (.*?)$/gm, "<h1>$1</h1>");
+
+    // ── 解析本地降級運作流程，轉換為 Terminal 動畫 ──
+    if (html.includes("【本地降級引擎運作流程】")) {
+        const fallbackRegex = /&gt; ⚙️ <strong>【本地降級引擎運作流程】<\/strong>([\s\S]*?)(?=\n\n|<h3>)/;
+        const match = html.match(fallbackRegex);
+        if (match) {
+            const stepsBlock = match[1];
+            const lines = stepsBlock.split('\n')
+                .map(line => line.replace(/^&gt;\s*-\s*/, '').trim())
+                .filter(line => line.length > 0);
+                
+            let terminalLinesHtml = lines.map((line, idx) => {
+                return `<div class="fallback-terminal-line" style="animation-delay: ${idx * 0.5 + 0.3}s;">&gt; ${line}</div>`;
+            }).join('');
+            
+            const terminalHtml = `
+                <div class="agent-terminal" style="margin-bottom: 1.25rem;">
+                    <div class="terminal-header">
+                        <div class="terminal-dots">
+                            <span class="dot dot-red"></span>
+                            <span class="dot dot-yellow"></span>
+                            <span class="dot dot-green"></span>
+                        </div>
+                        <span class="terminal-title">⚙️ LOCAL DEGRADATION ENGINE</span>
+                    </div>
+                    <div class="terminal-body" style="height: auto; max-height: 250px; padding: 1rem; background: #020617; color: #38bdf8; font-family: var(--font-mono); font-size: 0.82rem; display: flex; flex-direction: column; gap: 0.4rem; border-top: none;">
+                        <div class="fallback-terminal-line" style="color: #94a3b8; animation-delay: 0s; font-weight: 600;">[SYSTEM] 啟動本地離線降級分析...</div>
+                        ${terminalLinesHtml}
+                    </div>
+                </div>
+            `;
+            html = html.replace(match[0], terminalHtml);
+        }
+    }
+
     const paragraphs = html.split(/\n\n+/);
     return paragraphs.map(p => {
-        if (p.trim().startsWith('<h')) {
-            return p.trim();
+        const trimmed = p.trim();
+        if (trimmed.startsWith('<h') || trimmed.startsWith('<div')) {
+            return trimmed;
         }
-        return `<p>${p.trim().replace(/\n/g, "<br>")}</p>`;
+        return `<p>${trimmed.replace(/\n/g, "<br>")}</p>`;
     }).join("");
 }
 
@@ -992,16 +1132,36 @@ function buildDashboardFromBackend(result) {
     } else {
         const keyPoints = summaryData.key_points || [];
         keyPoints.slice(0, 4).forEach((kp, i) => {
+            let term = `重點 ${i + 1}`;
+            let definition = kp;
+            
+            // 清理開頭的項目符號 (如 "• " 或 "- ")
+            let cleanedKp = kp.replace(/^[•\-\s\*]*/, '').trim();
+            
+            // 嘗試從 markdown 粗體中提取標題，例如 "**監督式學習核心任務**：..."
+            const boldMatch = cleanedKp.match(/^\*\*(.*?)\*\*/);
+            if (boldMatch) {
+                term = boldMatch[1];
+                definition = cleanedKp.replace(/^\*\*.*?\*\*/, '').replace(/^[:：]\s*/, '').trim();
+            } else {
+                // 嘗試從冒號前提取詞彙，例如 "學習率 (Learning Rate, α)：控制步伐..."
+                const colonIdx = cleanedKp.search(/[:：]/);
+                if (colonIdx > 0 && colonIdx < 30) {
+                    term = cleanedKp.substring(0, colonIdx).trim();
+                    definition = cleanedKp.substring(colonIdx + 1).trim();
+                }
+            }
+
             const wrapper = document.createElement('div');
             wrapper.className = 'flashcard-wrapper';
             wrapper.innerHTML = `
                 <div class="flashcard-inner">
                     <div class="flashcard-front">
-                        <h4>重點 ${i + 1}</h4>
+                        <h4>${term}</h4>
                         <span>💡 點擊翻看詳情</span>
                     </div>
                     <div class="flashcard-back">
-                        <p class="flashcard-def">${kp}</p>
+                        <p class="flashcard-def">${definition}</p>
                         <div class="flashcard-actions">
                             <button class="flashcard-btn btn-mastered" title="記住了">👍 記住了</button>
                             <button class="flashcard-btn btn-review" title="還不熟">👎 還不熟</button>
@@ -1018,7 +1178,6 @@ function buildDashboardFromBackend(result) {
             
             const btnMastered = wrapper.querySelector('.btn-mastered');
             const btnReview = wrapper.querySelector('.btn-review');
-            const term = `重點 ${i + 1}`;
             
             btnMastered.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -1337,6 +1496,7 @@ async function submitQuiz() {
 
             // 顯示載入動畫並開始呼叫後端生成個人化複習計畫
             switchTab('results');
+            fetchStudentHistory(STUDENT_ID);
             await generateBackendStudyPlan(gradeData.updated_weak_topics);
 
         } catch (err) {
@@ -1854,56 +2014,87 @@ async function sendChatMessage() {
     // 2. 顯示 AI 正在輸入的狀態
     const loadingMessageId = appendChatMessage("ai", "⚡ AI 正在思考中...");
 
+    let answerText = "";
+    let retrievedPassages = [];
+    let usedBackend = false;
+
+    // Construct contextText
+    let contextText = "";
+    if (state.backendResult && state.backendResult.summary) {
+        contextText = typeof state.backendResult.summary === 'string' 
+            ? state.backendResult.summary 
+            : JSON.stringify(state.backendResult.summary);
+    } else if (state.activeCourseId && COURSE_PRESETS[state.activeCourseId]) {
+        const preset = COURSE_PRESETS[state.activeCourseId];
+        contextText = `課程標題: ${preset.title}\n描述: ${preset.description}\n`;
+        if (preset.summaries) {
+            contextText += "重點摘要:\n" + preset.summaries.map(s => `[${s.slideNum}] ${s.title}: ${s.desc}\n${s.bullets.map(b => `- ${b}`).join('\n')}`).join('\n\n');
+        }
+    } else if (state.customTextContent) {
+        contextText = state.customTextContent;
+    }
+
+    const priorHistory = [...(state.chatHistory || [])].slice(-10);
+
     try {
-        let answerText = "";
-        let retrievedPassages = [];
-
-        if (state.useBackend) {
-            // 呼叫後端真實 API
-            const headers = { 'Content-Type': 'application/json' };
-            if (AUTH_TOKEN) {
-                headers['Authorization'] = `Bearer ${AUTH_TOKEN}`;
-            }
-            
-            const res = await fetch(`${API_BASE}/chat`, {
-                method: 'POST',
-                headers: headers,
-                body: JSON.stringify({
-                    student_id: STUDENT_ID,
-                    document_id: state.documentId,
-                    message: text
-                })
-            });
-            const json = await res.json();
-            if (json.status !== 'success') throw new Error(json.error?.message || '問答服務異常');
-
+        const headers = { 'Content-Type': 'application/json' };
+        if (AUTH_TOKEN) {
+            headers['Authorization'] = `Bearer ${AUTH_TOKEN}`;
+        }
+        
+        const res = await fetch(`${API_BASE}/chat`, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({
+                student_id: STUDENT_ID,
+                document_id: state.documentId || null,
+                message: text,
+                history: priorHistory,
+                context: contextText
+            })
+        });
+        const json = await res.json();
+        if (json.status === 'success') {
             answerText = json.data.answer;
             retrievedPassages = json.data.retrieved_passages || [];
-        } else {
-            // 模擬模式 - 根據預設課程回答
-            await new Promise(resolve => setTimeout(resolve, 1500)); // 模擬延遲
-            
-            const courseTitle = COURSE_PRESETS[state.activeCourseId || 1]?.title || '講義';
-            
-            const lowerText = text.toLowerCase();
-            if (lowerText.includes("過擬合") || lowerText.includes("overfitting")) {
-                answerText = `在我們的「${courseTitle}」單元中，過擬合 (Overfitting) 指的是模型對訓練資料學習得「太完美」了，連雜訊都記了下來。這會導致模型在新資料上的泛化能力極差。\n\n建議解決方法：\n1. 增加資料量。\n2. 使用 Regularization (L1/L2)。\n3. 實施 Early Stopping。`;
-            } else if (lowerText.includes("學習率") || lowerText.includes("learning rate")) {
-                answerText = `學習率 (Learning Rate, α) 控制著最佳化演算法更新參數的步長。\n- 若太大：跨步太大，Loss 會震盪、甚至發散。\n- 若太小：步子太小，收斂速度極慢。\n它是決定機器學習能否順利收斂的最關鍵超參數之一。`;
-            } else if (lowerText.includes("bst") || lowerText.includes("走訪") || lowerText.includes("二元")) {
-                answerText = `在「二元搜尋樹 (BST)」中：\n- 中序走訪 (In-order Traversal) 會以『左 -> 根 -> 右』順序拜訪，輸出會是一個「排序好的遞增數列」。\n- 搜尋最壞複雜度為 O(N)（當樹退化成一條直線時）。`;
-            } else {
-                answerText = `【AI 隨身助教 - 範例回覆】\n您詢問了關於『${text}』的問題。目前系統運作於預設範例模式，因此由我為您做通用回答。\n\n如果您上傳了自己的講義 PDF，我們將能透過 RAG（檢索增強生成）在講義中找到最相關的段落，並給您最精準的客製化答覆！`;
+            usedBackend = true;
+            if (json.data.warning) {
+                showNotification(`⚠️ RAG 檢索注意：${json.data.warning}`, "warning");
             }
+        } else {
+            throw new Error(json.error?.message || '問答服務異常');
         }
-
-        // 更新 AI 回覆
-        updateChatMessage(loadingMessageId, answerText, retrievedPassages);
-        
     } catch (err) {
-        console.error("對話失敗:", err);
-        updateChatMessage(loadingMessageId, `⚠️ 對話連線異常：${err.message}`);
+        console.warn("呼叫後端問答失敗，將降級為模擬問答:", err);
+        showNotification(`❌ 問答失敗：${err.message}，已降級為模擬回答！`, "warning");
     }
+
+    if (!usedBackend) {
+        // 模擬模式 - 根據預設課程回答
+        await new Promise(resolve => setTimeout(resolve, 1000)); // 模擬延遲
+        
+        const courseTitle = COURSE_PRESETS[state.activeCourseId || 1]?.title || '講義';
+        const lowerText = text.toLowerCase();
+        if (lowerText.includes("過擬合") || lowerText.includes("overfitting")) {
+            answerText = `在我們的「${courseTitle}」單元中，過擬合 (Overfitting) 指的是模型對訓練資料學習得「太完美」了，連雜訊都記了下來。這會導致模型在新資料上的泛化能力極差。\n\n建議解決方法：\n1. 增加資料量。\n2. 使用 Regularization (L1/L2)。\n3. 實施 Early Stopping。`;
+        } else if (lowerText.includes("學習率") || lowerText.includes("learning rate")) {
+            answerText = `學習率 (Learning Rate, α) 控制著最佳化演算法更新參數的步長。\n- 若太大：跨步太大，Loss 會震盪、甚至發散。\n- 若太小：步子太小，收斂速度極慢。\n它是決定機器學習能否順利收斂的最關鍵超參數之一。`;
+        } else if (lowerText.includes("bst") || lowerText.includes("走訪") || lowerText.includes("二元")) {
+            answerText = `在「二元搜尋樹 (BST)」中：\n- 中序走訪 (In-order Traversal) 會以『左 -> 根 -> 右』順序拜訪，輸出會是一個「排序好的遞增數列」。\n- 搜尋最壞複雜度為 O(N)（當樹退化成一條直線時）。`;
+        } else {
+            answerText = `【AI 隨身助教 - 範例回覆】\n您詢問了關於『${text}』的問題。目前系統運作於預設範例模式，因此由我為您做通用回答。\n\n如果您上傳了自己的講義 PDF，我們將能透過 RAG（檢索增強生成）在講義中找到最相關的段落，並給您最精準的客製化答覆！`;
+        }
+    }
+
+    // 更新 AI 回覆
+    updateChatMessage(loadingMessageId, answerText, retrievedPassages);
+
+    // 儲存至 state 聊天歷史中
+    if (!state.chatHistory) {
+        state.chatHistory = [];
+    }
+    state.chatHistory.push({ role: "user", content: text });
+    state.chatHistory.push({ role: "assistant", content: answerText });
 }
 
 // 在聊天視窗中附加訊息
@@ -2043,5 +2234,172 @@ function showNotification(message, type = 'success') {
             toast.remove();
         });
     }, 3000);
+}
+
+// ── 學習歷程功能實作 ──────────────────────────────────────────────────
+
+// 1. 取得學生學習歷程
+async function fetchStudentHistory(studentId) {
+    if (!studentId) return;
+    try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (AUTH_TOKEN) {
+            headers['Authorization'] = `Bearer ${AUTH_TOKEN}`;
+        }
+        const res = await fetch(`${API_BASE}/student/${studentId}/history`, { headers });
+        const json = await res.json();
+        if (json.status !== 'success') {
+            console.warn("無法取得學習歷程:", json.error?.message);
+            return;
+        }
+        
+        const data = json.data;
+        renderHistoryDocs(data.documents || []);
+        renderHistoryDocLogs(data.document_logs || []);
+        renderHistoryQuizzes(data.quiz_records || []);
+    } catch (err) {
+        console.error("取得學習歷程失敗:", err);
+    }
+}
+
+// 1.2 渲染講義存取與活動日誌
+function renderHistoryDocLogs(logs) {
+    if (!els.historyDocLogsList) return;
+    if (logs.length === 0) {
+        els.historyDocLogsList.innerHTML = `<div style="color: var(--text-muted); text-align: center; padding: 1.5rem;">尚未有任何活動紀錄</div>`;
+        return;
+    }
+    
+    els.historyDocLogsList.innerHTML = logs.map(log => {
+        const dateStr = new Date(log.timestamp).toLocaleString();
+        let icon = "📄";
+        if (log.file_type === 'pdf') icon = "📕";
+        else if (log.file_type === 'pptx') icon = "📙";
+        
+        const isUpload = log.action === 'upload';
+        const badgeColor = isUpload ? '#3b82f6' : '#8b5cf6';
+        const badgeBg = isUpload ? 'rgba(59, 130, 246, 0.1)' : 'rgba(139, 92, 246, 0.1)';
+        const actionText = isUpload ? '上傳' : '載入';
+        
+        return `
+            <div class="history-item" style="padding: 0.6rem; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.01); display: flex; justify-content: space-between; align-items: center; text-align: left;">
+                <div style="display: flex; align-items: center; gap: 8px; width: 100%;">
+                    <span style="font-size: 1.25rem; flex-shrink: 0;">${icon}</span>
+                    <div style="flex-grow: 1; min-width: 0;">
+                        <div style="font-weight: 500; font-size: 0.9rem; color: var(--text-primary); word-break: break-all; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${log.filename}">${log.filename}</div>
+                        <div style="display: flex; align-items: center; gap: 8px; margin-top: 2px;">
+                            <span style="font-size: 0.7rem; font-weight: 600; color: ${badgeColor}; background: ${badgeBg}; padding: 1px 6px; border-radius: 4px; border: 1px solid ${badgeColor}20;">
+                                ${actionText}
+                            </span>
+                            <span style="font-size: 0.75rem; color: var(--text-muted);">${dateStr}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// 2. 渲染已上傳的講義歷史
+function renderHistoryDocs(docs) {
+    if (!els.historyDocsList) return;
+    if (docs.length === 0) {
+        els.historyDocsList.innerHTML = `<div style="color: var(--text-muted); text-align: center; padding: 1.5rem;">尚未上傳任何講義</div>`;
+        return;
+    }
+    
+    els.historyDocsList.innerHTML = docs.map(doc => {
+        const dateStr = new Date(doc.uploaded_at).toLocaleString();
+        let icon = "📄";
+        if (doc.file_type === 'pdf') icon = "📕";
+        else if (doc.file_type === 'pptx') icon = "📙";
+        
+        return `
+            <div class="history-item" style="padding: 0.6rem; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.01); display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 1.25rem;">${icon}</span>
+                    <div style="text-align: left;">
+                        <div style="font-weight: 500; font-size: 0.9rem; color: var(--text-primary); word-break: break-all;">${doc.filename}</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted);">${dateStr}</div>
+                    </div>
+                </div>
+                <button class="btn btn-secondary btn-use-history-doc" data-doc-id="${doc.document_id}" data-filename="${doc.filename}" style="padding: 0.25rem 0.6rem; font-size: 0.8rem; flex-shrink: 0; margin-left: 10px;">
+                    載入講義
+                </button>
+            </div>
+        `;
+    }).join('');
+
+    // 點擊事件：載入該歷史講義
+    els.historyDocsList.querySelectorAll('.btn-use-history-doc').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const docId = btn.getAttribute('data-doc-id');
+            const filename = btn.getAttribute('data-filename');
+            state.documentId = docId;
+            state.activeCourseId = null;
+            els.presetCards.forEach(c => c.classList.remove('active'));
+            els.customText.value = `[已載入歷史檔案] 名稱：${filename}\n文件 ID：${docId}\n\n✅ 您可以直接點擊下方「啟動 AI Agent 分析」按鈕開始。`;
+            console.log("載入歷史講義檔案 ID:", docId);
+            showNotification(`已載入講義：${filename}`);
+
+            // 呼叫後端觸碰以記錄存取時間，進而使此檔案在歷史檔案中更新排序
+            try {
+                const formData = new FormData();
+                formData.append('student_id', STUDENT_ID);
+                const headers = {};
+                if (AUTH_TOKEN) {
+                    headers['Authorization'] = `Bearer ${AUTH_TOKEN}`;
+                }
+                const res = await fetch(`${API_BASE}/upload/${docId}/touch`, {
+                    method: 'POST',
+                    headers: headers,
+                    body: formData
+                });
+                const json = await res.json();
+                if (json.status === 'success') {
+                    // 重新整理歷史檔案列表以更新順序
+                    fetchStudentHistory(STUDENT_ID);
+                }
+            } catch (err) {
+                console.error("觸碰歷史檔案失敗:", err);
+            }
+        });
+    });
+}
+
+// 3. 渲染答題對錯紀錄
+function renderHistoryQuizzes(quizzes) {
+    if (!els.historyQuizzesList) return;
+    if (quizzes.length === 0) {
+        els.historyQuizzesList.innerHTML = `<div style="color: var(--text-muted); text-align: center; padding: 1.5rem;">尚未進行任何測驗</div>`;
+        return;
+    }
+    
+    els.historyQuizzesList.innerHTML = quizzes.map(quiz => {
+        const dateStr = new Date(quiz.answered_at).toLocaleString();
+        const isCorrect = quiz.is_correct === 1 || quiz.is_correct === true;
+        const badgeColor = isCorrect ? '#10b981' : '#ef4444';
+        const badgeBg = isCorrect ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+        const statusText = isCorrect ? '對' : '錯';
+        
+        return `
+            <div class="history-item" style="padding: 0.75rem; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.01); display: flex; flex-direction: column; gap: 6px; text-align: left;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;">
+                    <span style="font-size: 0.8rem; background: var(--bg-surface); padding: 2px 6px; border-radius: 4px; color: var(--primary); font-weight: 500;">
+                        📌 主題: ${quiz.topic}
+                    </span>
+                    <span style="font-size: 0.8rem; font-weight: 600; color: ${badgeColor}; background: ${badgeBg}; padding: 2px 8px; border-radius: 4px; border: 1px solid ${badgeColor}20;">
+                        ${statusText}
+                    </span>
+                </div>
+                <div style="font-size: 0.88rem; color: var(--text-primary); font-weight: 500;">問: ${quiz.question}</div>
+                <div style="font-size: 0.8rem; color: var(--text-secondary); display: flex; gap: 15px;">
+                    <div>您的作答: <span style="color: ${isCorrect ? 'var(--text-primary)' : '#ef4444'}; font-weight: 500;">${quiz.student_answer}</span></div>
+                    <div>標準答案: <span style="color: #10b981; font-weight: 500;">${quiz.correct_answer}</span></div>
+                </div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); text-align: right;">${dateStr}</div>
+            </div>
+        `;
+    }).join('');
 }
 

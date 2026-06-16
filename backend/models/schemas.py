@@ -38,6 +38,7 @@ class UploadResponse(BaseModel):
     document_id: str = Field(..., description="UUID，供後續任務引用")
     filename: str
     file_type: str
+    warning: Optional[str] = Field(None, description="警告訊息（例如向量索引建立失敗的詳細錯誤）")
 
 
 # ── 任務相關 Schema ───────────────────────────────────────────────────────────
@@ -243,6 +244,12 @@ class StudyRecommendation(BaseModel):
 
 # ── 聊天相關 Schema ───────────────────────────────────────────────────────────
 
+class ChatMessage(BaseModel):
+    """對話歷史訊息。"""
+    role: Literal["user", "assistant"]
+    content: str
+
+
 class ChatRequest(BaseModel):
     """POST /api/chat 請求體。"""
     student_id: str = Field(
@@ -254,6 +261,14 @@ class ChatRequest(BaseModel):
     message: str = Field(
         ..., min_length=1, max_length=2000,
         description="學生的問題內容"
+    )
+    history: list[ChatMessage] = Field(
+        default_factory=list,
+        description="對話歷史紀錄"
+    )
+    context: Optional[str] = Field(
+        None,
+        description="附加的講義上下文內容（例如自訂文字或講義摘要，以便無 RAG 時也能問答）"
     )
     llm_provider: Optional[Literal["gemini", "openai", "mock"]] = Field(
         None, description="指定 LLM 供應商（不填則用設定預設值）"
@@ -271,8 +286,8 @@ class ChatRequest(BaseModel):
     @field_validator("document_id")
     @classmethod
     def validate_document_id(cls, v: Optional[str]) -> Optional[str]:
-        if v is None:
-            return v
+        if v is None or v == "":
+            return None
         try:
             uuid.UUID(v)
         except ValueError:
@@ -287,6 +302,7 @@ class ChatResponse(BaseModel):
         default_factory=list,
         description="檢索出的講義參考段落列表"
     )
+    warning: Optional[str] = Field(None, description="警告訊息（例如 RAG 檢索失敗的錯誤）")
 
 
 # 解決前向引用

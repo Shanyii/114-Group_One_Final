@@ -244,6 +244,29 @@ class GeneratedQuiz(Base):
     )
 
 
+# ── 講義存取與活動紀錄資料表 ──────────────────────────────────────────────────
+
+class DocumentLog(Base):
+    """
+    講義存取與活動紀錄資料表。
+    不論是上傳講義還是載入歷史講義，都將在此記錄。
+    """
+    __tablename__ = "document_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    student_id = Column(String(36), ForeignKey("students.student_id"), nullable=False)
+    document_id = Column(String(36), ForeignKey("documents.document_id"), nullable=False)
+    filename = Column(String(255), nullable=False, comment="講義檔案名稱")
+    file_type = Column(String(10), nullable=False, comment="講義類型：pdf | pptx | txt")
+    action = Column(String(20), nullable=False, comment="動作類型：upload | load")
+    timestamp = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("idx_document_logs_student_id", "student_id"),
+        Index("idx_document_logs_timestamp", "timestamp"),
+    )
+
+
 # ── 資料庫初始化工具函式 ──────────────────────────────────────────────────────
 
 def create_tables(database_url: str) -> None:
